@@ -82,20 +82,29 @@ msg()
   printf '%s\n' "$1" >&2
 }
 
+error()
+{
+  msg "(error) $1"
+}
+
+info()
+{
+  msg "(info) $1"
+}
+
 die()
 {
-  msg $'\n'"error: $1"
+  error "$1"
   exit 1
 }
 
 run()
 {
-  msg "info: exec: ${*@Q}"
+  info "[exec] ${*@Q}"
   rc='0'
   "$@" || rc="$?"
   [ "$rc" == '0' ] ||
     die "Failed executing command (exit code ${rc@Q}): ${*@Q}"
-  msg ''
 }
 
 exit_trap()
@@ -175,6 +184,7 @@ EOF
 hook_cmd_run()
 {
   [ -n "$2" ] || return 0
+  info "About to execute hook command for stage ${1@Q}."
   (
     for v in "${_GLOBALS[@]}"; do
       # shellcheck disable=2163 # This does not export 'v'
@@ -183,6 +193,7 @@ hook_cmd_run()
     export STAGE="$1"
     run bash -c "$2"
   )
+  info "Successfully executed hook command for stage ${1@Q}."
 }
 
 wheel_build()
@@ -387,42 +398,60 @@ if [ -n "$WORK_DIR" ]; then
 fi
 
 hook_cmd_run 'pre-build' "$_PRE_BUILD_CMD"
+info 'Building wheel...'
 wheel_build
+info 'Successfully built wheel.'
 hook_cmd_run 'post-build' "$_POST_BUILD_CMD"
 
+info 'Verifiying that wheel is not already installed...'
 check_module_import "$WHEEL_NAME"
 [ -z "$_MODULE_IMPORT_SUCCESS" ] ||
-  die "Module ${WHEEL_NAME@Q} is already installed in this python environment."
+  die "Wheel ${WHEEL_NAME@Q} is already installed in this python environment."
+info 'Wheel is not already installed.'
 
 hook_cmd_run 'pre-install' "$_POST_INSTALL_CMD"
+info 'Installing wheel...'
 wheel_install
+info 'Successfully installed wheel.'
 hook_cmd_run 'post-install' "$_POST_INSTALL_CMD"
 
+info 'Verifiying that installed wheel can be imported as a module...'
 check_module_import "$WHEEL_NAME"
 [ -n "$_MODULE_IMPORT_SUCCESS" ] ||
   die "Unexpectedly failed to import module ${WHEEL_NAME@Q}."
+info 'Successfully imported module.'
 
 if [ -n "$_MODE_PYTEST" ]; then
+  info 'Running tests using pytest...'
   run python3 -m pytest -v
+  info 'Successfully run tests using pytest.'
 fi
 
 if [ -n "$_MODE_UNITTEST" ]; then
+  info 'Running tests using unittest...'
   run python3 -m unittest discover tests -v
+  info 'Successfully run tests using unittest.'
 fi
 
 hook_cmd_run 'pre-uninstall' "$_POST_UNINSTALL_CMD"
+info 'Uninstall wheel again...'
 wheel_uninstall
+info 'Successfully uninstalled wheel.'
 hook_cmd_run 'post-uninstall' "$_POST_UNINSTALL_CMD"
 
 if [ -n "$TARGET_DIR" ]; then
+  info "Unpacking wheel into ${MODULES_TARGET_DIR@Q}..."
   run unzip -o -- "$WHEEL_FILE" -d "$MODULES_TARGET_DIR/"
+  info 'Successfully unpacked wheel.'
 fi
 
 if [ -n "$WHEEL_DIR" ]; then
+  info "Copying wheel into ${WHEEL_DIR@Q}..."
   run cp -a -- "$WHEEL_FILE" "$WHEEL_DIR/"
+  info 'Successfully copied wheel.'
 fi
 
-msg 'info: All done.'
+info 'All done.'
 
 rm -rf -- "$TMP_DIR"
 trap '' EXIT
