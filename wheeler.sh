@@ -418,7 +418,7 @@ wheel_uninstall
 hook_cmd_run 'post-uninstall' "$_POST_UNINSTALL_CMD"
 
 if [ -n "$TARGET_DIR" ]; then
-  run unzip -- "$WHEEL_FILE" -d "$MODULES_TARGET_DIR/"
+  run unzip -o -- "$WHEEL_FILE" -d "$MODULES_TARGET_DIR/"
 fi
 
 if [ -n "$WHEEL_DIR" ]; then
