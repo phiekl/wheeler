@@ -158,7 +158,8 @@ check_module_import()
 
   module="$1"
 
-  f="$TMP_DIR/check_module_import.py"
+  f="$TMP_DIR/check_module_import/script.py"
+  mkdir -p -- "${f%/*}"
   readarray -t data << 'EOF'
 import sys
 
