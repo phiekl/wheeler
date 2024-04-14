@@ -91,13 +91,10 @@ die()
 run()
 {
   msg "info: exec: ${*@Q}"
-  (
-    set +e
-    rc='0'
-    "$@" || rc="$?"
-    [ "$rc" == '0' ] ||
-      die "Failed executing command (exit code ${rc@Q}): ${*@Q}"
-  )
+  rc='0'
+  "$@" || rc="$?"
+  [ "$rc" == '0' ] ||
+    die "Failed executing command (exit code ${rc@Q}): ${*@Q}"
   msg ''
 }
 
