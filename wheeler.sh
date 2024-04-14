@@ -427,6 +427,5 @@ fi
 
 msg 'info: All done.'
 
-TMP_DIR=''
 rm -rf -- "$TMP_DIR"
 trap '' EXIT
