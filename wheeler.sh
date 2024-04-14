@@ -95,6 +95,7 @@ info()
 die()
 {
   error "$1"
+  _EXPECTED_EXIT='yes'
   exit 1
 }
 
@@ -109,11 +110,17 @@ run()
 
 exit_trap()
 {
+  if [ -z "$_EXPECTED_EXIT" ]; then
+    error 'Unexpected exit due to non-zero exit status.'
+  fi
+
   if [ -n "$TMP_DIR" ]; then
     rm -rf -- "$TMP_DIR"
   fi
   if [ -n "$WHEEL_INSTALLED" ]; then
-    wheel_uninstall
+    if ! out="$(wheel_uninstall 2>&1)"; then
+      error "Failed uninstalling wheel during rollback with output ${out@Q}."
+    fi
   fi
 }
 
@@ -267,6 +274,7 @@ _GLOBALS=(
   'WHEEL_INSTALLED'
   'WHEEL_NAME'
   'WORK_DIR'
+  '_EXPECTED_EXIT'
   '_MODE_PYTEST'
   '_MODE_UNITTEST'
   '_MODULE_IMPORT_SUCCESS'
