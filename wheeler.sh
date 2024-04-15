@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright 2024 Philip Eklöf
+# SPDX-FileCopyrightText: 2024 Philip Eklöf
 #
 # SPDX-License-Identifier: MIT
 
