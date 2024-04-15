@@ -275,6 +275,24 @@ wheel_uninstall()
   run python3 -m pip uninstall --no-cache-dir --yes -- "$WHEEL_NAME"
 }
 
+wheel_unpack()
+{
+  local data dist_info expected f module out unexpected
+
+  f="$TMP_DIR/wheel_unpack.py"
+  mkdir -p -- "${f%/*}"
+  readarray -t data << 'EOF'
+import sys
+import zipfile
+with zipfile.ZipFile(sys.argv[1], 'r') as zh:
+    zh.extractall(sys.argv[2])
+EOF
+  printf '%s\n' "${data[@]}" > "$f"
+
+  out="$(run python3 "$f" "$WHEEL_FILE" "$MODULES_TARGET_DIR")"
+  rm -- "$f"
+}
+
 wheel_verify_content()
 {
   local data dist_info expected f module out unexpected
@@ -444,8 +462,6 @@ done
 check_python
 
 if [ -n "$TARGET_DIR" ]; then
-  hash unzip 2>&- ||
-    die "'unzip' command not found, required with --target-dir."
   if [ -n "$MODULES_PATH" ]; then
     unset rgx
     rgx='^[^/]+(/[^/]+)*'
@@ -533,7 +549,7 @@ hook_cmd_run 'post-uninstall' "$_POST_UNINSTALL_CMD"
 
 if [ -n "$TARGET_DIR" ]; then
   info "Unpacking wheel into ${MODULES_TARGET_DIR@Q}..."
-  run unzip -o -- "$WHEEL_FILE" -d "$MODULES_TARGET_DIR/"
+  wheel_unpack
   info 'Successfully unpacked wheel.'
 fi
 

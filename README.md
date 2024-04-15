@@ -21,7 +21,6 @@ Primarily meant to be used in a clean CI environment prior to distro packaging.
 
 - Tested using bash 5.2, should work with 5.0, might work with 4.x.
 - `cp`, `mkdir`, `mktemp` (coreutils)
-- `unzip` for optional unpacking of wheels.
 - `python3` in the configured prefix (see help text).
 
 ## Installation and usage
