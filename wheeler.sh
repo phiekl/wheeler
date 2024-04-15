@@ -99,15 +99,6 @@ die()
   exit 1
 }
 
-run()
-{
-  info "[exec] ${*@Q}"
-  rc='0'
-  "$@" || rc="$?"
-  [ "$rc" == '0' ] ||
-    die "Failed executing command (exit code ${rc@Q}): ${*@Q}"
-}
-
 exit_trap()
 {
   if [ -z "$_EXPECTED_EXIT" ]; then
@@ -124,6 +115,17 @@ exit_trap()
   fi
 }
 
+# helper functions below
+run()
+{
+  info "[exec] ${*@Q}"
+  rc='0'
+  "$@" || rc="$?"
+  [ "$rc" == '0' ] ||
+    die "Failed executing command (exit code ${rc@Q}): ${*@Q}"
+}
+
+# main functions below
 check_python()
 {
   local actual expected out
@@ -221,7 +223,7 @@ wheel_build()
 
   matches=("$d"/*.whl)
   if [ "${#matches[@]}" == '0' ]; then
-    die 'Unexpectedly, no wheel was built.'
+    die 'Build succeeded, but no resulting wheel could be found.'
   elif [ "${#matches[@]}" -gt '1' ]; then
     ls -al -- "$d"
     printf '\n' >&2
@@ -246,6 +248,7 @@ wheel_install()
     --no-cache-dir \
     --no-deps \
     --no-index \
+    --no-warn-script-location \
     --user \
     -- "$WHEEL_FILE"
 
@@ -302,21 +305,6 @@ while [ -n "${1+set}" ]; do
       MODULES_PATH="$2"
       shift 2
       ;;
-    '--pre-build-cmd')
-      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
-      _PRE_BUILD_CMD="$2"
-      shift 2
-      ;;
-    '--pre-install-cmd')
-      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
-      _PRE_INSTALL_CMD="$2"
-      shift 2
-      ;;
-    '--pre-uninstall-cmd')
-      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
-      _PRE_UNINSTALL_CMD="$2"
-      shift 2
-      ;;
     '--post-build-cmd')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       _POST_BUILD_CMD="$2"
@@ -330,6 +318,21 @@ while [ -n "${1+set}" ]; do
     '--post-uninstall-cmd')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       _POST_UNINSTALL_CMD="$2"
+      shift 2
+      ;;
+    '--pre-build-cmd')
+      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
+      _PRE_BUILD_CMD="$2"
+      shift 2
+      ;;
+    '--pre-install-cmd')
+      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
+      _PRE_INSTALL_CMD="$2"
+      shift 2
+      ;;
+    '--pre-uninstall-cmd')
+      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
+      _PRE_UNINSTALL_CMD="$2"
       shift 2
       ;;
     '--prefix')
@@ -412,11 +415,10 @@ wheel_build
 info 'Successfully built wheel.'
 hook_cmd_run 'post-build' "$_POST_BUILD_CMD"
 
-info 'Verifiying that wheel is not already installed...'
+info "Verifying that the wheel's modules are not already installed..."
 check_module_import "$WHEEL_NAME"
 [ -z "$_MODULE_IMPORT_SUCCESS" ] ||
-  die "Wheel ${WHEEL_NAME@Q} is already installed in this python environment."
-info 'Wheel is not already installed.'
+  die "Module ${WHEEL_NAME@Q} is already installed in this python environment."
 
 hook_cmd_run 'pre-install' "$_POST_INSTALL_CMD"
 info 'Installing wheel...'
@@ -424,11 +426,11 @@ wheel_install
 info 'Successfully installed wheel.'
 hook_cmd_run 'post-install' "$_POST_INSTALL_CMD"
 
-info 'Verifiying that installed wheel can be imported as a module...'
+info "Verifying that the installed wheel's modules can be imported..."
 check_module_import "$WHEEL_NAME"
 [ -n "$_MODULE_IMPORT_SUCCESS" ] ||
-  die "Unexpectedly failed to import module ${WHEEL_NAME@Q}."
-info 'Successfully imported module.'
+  die "Failed to import module ${WHEEL_NAME@Q}."
+info 'Successfully imported modules.'
 
 if [ -n "$_MODE_PYTEST" ]; then
   info 'Running tests using pytest...'
@@ -443,7 +445,7 @@ if [ -n "$_MODE_UNITTEST" ]; then
 fi
 
 hook_cmd_run 'pre-uninstall' "$_POST_UNINSTALL_CMD"
-info 'Uninstall wheel again...'
+info 'Uninstalling wheel again...'
 wheel_uninstall
 info 'Successfully uninstalled wheel.'
 hook_cmd_run 'post-uninstall' "$_POST_UNINSTALL_CMD"
