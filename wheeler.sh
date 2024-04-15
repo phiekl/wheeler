@@ -275,6 +275,47 @@ wheel_uninstall()
   run python3 -m pip uninstall --no-cache-dir --yes -- "$WHEEL_NAME"
 }
 
+wheel_verify_content()
+{
+  local data dist_info expected f module out unexpected
+
+  f="$TMP_DIR/wheel_verify_content.py"
+  mkdir -p -- "${f%/*}"
+  readarray -t data << 'EOF'
+import sys
+import zipfile
+with zipfile.ZipFile(sys.argv[1], 'r') as zh:
+    print("\n".join(set([f.split("/")[0] for f in zh.namelist()])))
+EOF
+  printf '%s\n' "${data[@]}" > "$f"
+
+  out="$(run python3 "$f" "$WHEEL_FILE")"
+  rm -- "$f"
+
+  declare -A expected=()
+  for f in "${_MODULES_EXPECTED[@]}"; do
+    expected["$f"]='set'
+  done
+  dist_info=()
+  unexpected=()
+  while read -r f; do
+    if [[ $f =~ \.dist-info$ ]]; then
+      dist_info+=("$f")
+    elif [ -z "${expected["$f"]-}" ] && [ -z "${expected["${f%.py}"]-}" ]; then
+      unexpected+=("$f")
+    fi
+  done <<< "$out"
+
+  if [ "${#dist_info[@]}" == '0' ]; then
+    die 'No *.dist-info items found in wheel.'
+  elif [ "${#dist_info[@]}" -gt '1' ]; then
+    die "Multiple *.dist-info items found in wheel: ${dist_info[*]@Q}"
+  fi
+  if [ "${#unexpected[@]}" -ge '1' ]; then
+    die "Unexpected items found in wheel: ${unexpected[*]@Q}"
+  fi
+}
+
 set -eupo pipefail
 shopt -s nullglob
 shopt -s inherit_errexit
@@ -443,6 +484,10 @@ hook_cmd_run 'post-build' "$_POST_BUILD_CMD"
 
 [ "${#_MODULES_EXPECTED[@]}" -ge '1' ] ||
   _MODULES_EXPECTED=("$WHEEL_NAME")
+
+info "Verifying contents of wheel (expecting: ${_MODULES_EXPECTED[*]@Q})..."
+wheel_verify_content
+info 'All expected modules found in wheel.'
 
 info "Verifying that the wheel's modules are not already installed..."
 _installed=()
