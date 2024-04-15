@@ -53,12 +53,18 @@ Triggers unpacking of the wheel, where the specified directory is used in a
 Use this module path rather than 'lib/python<version>/site-packages' when
 unpacking the wheel.
 
+--entrypoints-dir <path>
+Generate entrypoints defined in the wheel and save to this directory.
+
 --wheel-dir <path>
 Copy the wheel into this directory.
 
 --expected-modules <module,moduleN,..>
 Expect these comma-separated module names in the wheel, which will be imported
 one by one, during verification. Defaults to the name of the wheel.
+
+--expected-entrypoints <entrypoint,entrypointN,..>
+Expect these entrypoints to be defined in the wheel and generate only these.
 
 --pytest
 Execute pytest after the wheel has been built and installed.
@@ -255,6 +261,83 @@ wheel_build()
   WHEEL_FILE="$f"
 }
 
+wheel_entrypoint_parse()
+{
+  local data f found line missing out rgx s
+
+  f="$TMP_DIR/wheel_entrypoint_generate.py"
+  mkdir -p -- "${f%/*}"
+  readarray -t data << 'EOF'
+import sys
+import zipfile
+with zipfile.ZipFile(sys.argv[1], 'r') as zh:
+    try:
+        print(zh.read(f"{sys.argv[2]}/entry_points.txt").decode())
+    except KeyError:
+        pass
+EOF
+  printf '%s\n' "${data[@]}" > "$f"
+
+  out="$(run python3 "$f" "$WHEEL_FILE" "$_WHEEL_DIST_INFO_DIRNAME")"
+  rm -- "$f"
+
+  [ -n "$out" ] ||
+    die 'No entrypoints data found in wheel.'
+
+  found=''
+  s='[:space:]'
+  rgx="^[$s]*([^$s/]+)[$s]*=[$s]*([^$s:]+:[^$s]+)[$s]*$"
+  _ENTRYPOINTS=()
+  while read -r line; do
+    if [ -z "$found" ]; then
+      [ "$line" == '[console_scripts]' ] || continue
+      found='yes'
+    else
+      [[ $line =~ $rgx ]] || continue
+      _ENTRYPOINTS["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
+    fi
+  done <<< "$out"
+
+  [ -n "$found" ] ||
+    die "No console_scripts section found in wheel's entrypoints data."
+
+  [ "${#_ENTRYPOINTS[@]}" -ge '1' ] ||
+    die "Found console_scripts section in wheel's entrypoints data, but no \
+(valid) entrypoints."
+
+  if [ "${#_ENTRYPOINTS_EXPECTED[@]}" == '0' ]; then
+    _ENTRYPOINTS_EXPECTED=("${!_ENTRYPOINTS[@]}")
+  else
+    missing=()
+    for name in "${_ENTRYPOINTS_EXPECTED[@]}"; do
+      [ -n "${_ENTRYPOINTS["$name"]-}" ] || missing+=("$name")
+    done
+    [ "${#missing[@]}" == '0' ] ||
+      die "Missing expected entrypoint(s): ${missing[*]@Q}"
+  fi
+}
+
+wheel_entrypoint_generate()
+{
+  for name in "${_ENTRYPOINTS_EXPECTED[@]}"; do
+    module="${_ENTRYPOINTS["$name"]%%:*}"
+    function="${_ENTRYPOINTS["$name"]#*:}"
+
+    readarray -t data << EOF
+#!$PREFIX/bin/python3
+import sys
+from $module import $function
+if __name__ == '__main__':
+    sys.exit($function())
+EOF
+
+    f="$ENTRYPOINTS_DIR/$name"
+    info "Generating entrypoint ${f@Q}."
+    printf '%s\n' "${data[@]}" > "$ENTRYPOINTS_DIR/$name"
+    chmod -- 0755 "$ENTRYPOINTS_DIR/$name"
+  done
+}
+
 wheel_install()
 {
   run python3 -m pip install \
@@ -332,6 +415,8 @@ EOF
   if [ "${#unexpected[@]}" -ge '1' ]; then
     die "Unexpected items found in wheel: ${unexpected[*]@Q}"
   fi
+
+  _WHEEL_DIST_INFO_DIRNAME="${dist_info[0]}"
 }
 
 set -eupo pipefail
@@ -340,6 +425,7 @@ shopt -s inherit_errexit
 
 unset _GLOBALS
 _GLOBALS=(
+  'ENTRYPOINTS_DIR'
   'MODULES_PATH'
   'MODULES_TARGET_DIR'
   'PREFIX'
@@ -361,12 +447,17 @@ _GLOBALS=(
   '_PRE_BUILD_CMD'
   '_PRE_INSTALL_CMD'
   '_PRE_UNINSTALL_CMD'
+  '_WHEEL_DIST_INFO_DIRNAME'
+  '@_ENTRYPOINTS_EXPECTED'
   '@_MODULES_EXPECTED'
+  '=_ENTRYPOINTS'
 )
 for v in "${_GLOBALS[@]}"; do
   unset "$v"
   if [ "${v:0:1}" == '@' ]; then
     eval "${v:1}=()"
+  elif [ "${v:0:1}" == '=' ]; then
+    eval declare -A "${v:1}=()"
   else
     eval "$v=''"
   fi
@@ -378,11 +469,23 @@ while [ -n "${1+set}" ]; do
     '--help')
       syntax
       ;;
+    '--expected-entrypoints')
+      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
+      csv_read '_ENTRYPOINTS_EXPECTED' "$2"
+      [ "${#_ENTRYPOINTS_EXPECTED[@]}" -ge '1' ] ||
+        die "Argument ${1@Q} requires a non-empty comma-separated value."
+      shift 2
+      ;;
     '--expected-modules')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       csv_read '_MODULES_EXPECTED' "$2"
       [ "${#_MODULES_EXPECTED[@]}" -ge '1' ] ||
         die "Argument ${1@Q} requires a non-empty comma-separated value."
+      shift 2
+      ;;
+    '--entrypoints-dir')
+      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
+      ENTRYPOINTS_DIR="$2"
       shift 2
       ;;
     '--modules-path')
@@ -460,6 +563,10 @@ done
   die "Prefix directory ${PREFIX@Q} could not be found."
 
 check_python
+
+if [ -n "$ENTRYPOINTS_DIR" ]; then
+  run mkdir -p -- "$ENTRYPOINTS_DIR"
+fi
 
 if [ -n "$TARGET_DIR" ]; then
   if [ -n "$MODULES_PATH" ]; then
@@ -551,6 +658,16 @@ if [ -n "$TARGET_DIR" ]; then
   info "Unpacking wheel into ${MODULES_TARGET_DIR@Q}..."
   wheel_unpack
   info 'Successfully unpacked wheel.'
+fi
+
+if [ -n "$ENTRYPOINTS_DIR" ]; then
+  info 'Parsing entrypoints from wheel...'
+  wheel_entrypoint_parse
+  info "Successfully parsed entrypoints."
+
+  info 'Generating entrypoints from wheel...'
+  wheel_entrypoint_generate
+  info "Successfully generated entrypoints."
 fi
 
 if [ -n "$WHEEL_DIR" ]; then
