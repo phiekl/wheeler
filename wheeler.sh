@@ -167,28 +167,22 @@ import sys
 
 try:
     __import__(sys.argv[1])
-except ModuleNotFoundError:
-    print("not found")
-else:
-    print("imported")
+except ModuleNotFoundError as e:
+    print("ModuleNotFoundError")
+    print(e)
 EOF
   printf '%s\n' "${data[@]}" > "$f"
 
   out="$(run python3 "$f" "$module")"
   rm -- "$f"
 
-  case "$out" in
-    'imported')
-      _MODULE_IMPORT_SUCCESS='yes'
-      ;;
-    'not found')
-      _MODULE_IMPORT_SUCCESS=''
-      ;;
-    *)
-      die "Unknown error while checking if ${module@Q} is already installed \
-(output: ${out@Q})"
-      ;;
-  esac
+  _MODULE_IMPORT_ERROR=''
+  [ -n "$out" ] || return 0
+
+  [ "${out%%$'\n'*}" == 'ModuleNotFoundError' ] ||
+    die "Importing module ${module@Q} generated unexpected output:"$'\n'"$out"
+
+  _MODULE_IMPORT_ERROR="${out#*$'\n'}"
 }
 
 hook_cmd_run()
@@ -281,7 +275,7 @@ _GLOBALS=(
   '_EXPECTED_EXIT'
   '_MODE_PYTEST'
   '_MODE_UNITTEST'
-  '_MODULE_IMPORT_SUCCESS'
+  '_MODULE_IMPORT_ERROR'
   '_POST_BUILD_CMD'
   '_POST_INSTALL_CMD'
   '_POST_UNINSTALL_CMD'
@@ -417,7 +411,7 @@ hook_cmd_run 'post-build' "$_POST_BUILD_CMD"
 
 info "Verifying that the wheel's modules are not already installed..."
 check_module_import "$WHEEL_NAME"
-[ -z "$_MODULE_IMPORT_SUCCESS" ] ||
+[ -n "$_MODULE_IMPORT_ERROR" ] ||
   die "Module ${WHEEL_NAME@Q} is already installed in this python environment."
 
 hook_cmd_run 'pre-install' "$_POST_INSTALL_CMD"
@@ -428,8 +422,8 @@ hook_cmd_run 'post-install' "$_POST_INSTALL_CMD"
 
 info "Verifying that the installed wheel's modules can be imported..."
 check_module_import "$WHEEL_NAME"
-[ -n "$_MODULE_IMPORT_SUCCESS" ] ||
-  die "Failed to import module ${WHEEL_NAME@Q}."
+[ -z "$_MODULE_IMPORT_ERROR" ] ||
+  die "Failed to import module ${WHEEL_NAME@Q}: $_MODULE_IMPORT_ERROR"
 info 'Successfully imported modules.'
 
 if [ -n "$_MODE_PYTEST" ]; then
