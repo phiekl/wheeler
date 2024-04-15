@@ -56,6 +56,10 @@ unpacking the wheel.
 --wheel-dir <path>
 Copy the wheel into this directory.
 
+--expected-modules <module,moduleN,..>
+Expect these comma-separated module names in the wheel, which will be imported
+one by one, during verification. Defaults to the name of the wheel.
+
 --pytest
 Execute pytest after the wheel has been built and installed.
 
@@ -116,6 +120,22 @@ exit_trap()
 }
 
 # helper functions below
+csv_read()
+{
+  local csv_val dst_var val values
+
+  dst_var="$1"
+  csv_val="$2"
+
+  values=()
+  while IFS='' read -d, -r val; do
+    [ -n "$val" ] || continue
+    values+=("$val")
+  done < <(printf '%s,' "$csv_val")
+
+  eval "$dst_var"='("${values[@]}")'
+}
+
 run()
 {
   info "[exec] ${*@Q}"
@@ -192,7 +212,7 @@ hook_cmd_run()
   (
     for v in "${_GLOBALS[@]}"; do
       # shellcheck disable=2163 # This does not export 'v'
-      [[ $v =~ ^_ ]] || export "$v"
+      [[ $v =~ ^[_@] ]] || export "$v"
     done
     export STAGE="$1"
     run bash -c "$2"
@@ -282,10 +302,15 @@ _GLOBALS=(
   '_PRE_BUILD_CMD'
   '_PRE_INSTALL_CMD'
   '_PRE_UNINSTALL_CMD'
+  '@_MODULES_EXPECTED'
 )
 for v in "${_GLOBALS[@]}"; do
   unset "$v"
-  eval "$v=''"
+  if [ "${v:0:1}" == '@' ]; then
+    eval "${v:1}=()"
+  else
+    eval "$v=''"
+  fi
 done
 unset v
 
@@ -293,6 +318,13 @@ while [ -n "${1+set}" ]; do
   case "$1" in
     '--help')
       syntax
+      ;;
+    '--expected-modules')
+      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
+      csv_read '_MODULES_EXPECTED' "$2"
+      [ "${#_MODULES_EXPECTED[@]}" -ge '1' ] ||
+        die "Argument ${1@Q} requires a non-empty comma-separated value."
+      shift 2
       ;;
     '--modules-path')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
@@ -409,10 +441,18 @@ wheel_build
 info 'Successfully built wheel.'
 hook_cmd_run 'post-build' "$_POST_BUILD_CMD"
 
+[ "${#_MODULES_EXPECTED[@]}" -ge '1' ] ||
+  _MODULES_EXPECTED=("$WHEEL_NAME")
+
 info "Verifying that the wheel's modules are not already installed..."
-check_module_import "$WHEEL_NAME"
-[ -n "$_MODULE_IMPORT_ERROR" ] ||
-  die "Module ${WHEEL_NAME@Q} is already installed in this python environment."
+_installed=()
+for _module in "${_MODULES_EXPECTED[@]}"; do
+  check_module_import "$_module"
+  [ -n "$_MODULE_IMPORT_ERROR" ] || _installed+=("$_module")
+done
+[ "${#_installed[@]}" == '0' ] ||
+  die "Found already installed modules in this python environment: \
+${_installed[*]@Q}"
 
 hook_cmd_run 'pre-install' "$_POST_INSTALL_CMD"
 info 'Installing wheel...'
@@ -421,10 +461,12 @@ info 'Successfully installed wheel.'
 hook_cmd_run 'post-install' "$_POST_INSTALL_CMD"
 
 info "Verifying that the installed wheel's modules can be imported..."
-check_module_import "$WHEEL_NAME"
-[ -z "$_MODULE_IMPORT_ERROR" ] ||
-  die "Failed to import module ${WHEEL_NAME@Q}: $_MODULE_IMPORT_ERROR"
-info 'Successfully imported modules.'
+for _module in "${_MODULES_EXPECTED[@]}"; do
+  check_module_import "$_module"
+  [ -z "$_MODULE_IMPORT_ERROR" ] ||
+    die "Failed to import module ${_module@Q}: $_MODULE_IMPORT_ERROR"
+done
+info "Successfully imported module(s): ${_MODULES_EXPECTED[*]@Q}"
 
 if [ -n "$_MODE_PYTEST" ]; then
   info 'Running tests using pytest...'
