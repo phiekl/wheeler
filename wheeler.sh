@@ -152,6 +152,23 @@ run()
 }
 
 # main functions below
+check_arg_valid_path()
+{
+  local description path rgx
+
+  path="$1"
+  description="$2"
+
+  rgx='^[^/]+(/[^/]+)*'
+  [[ $path =~ $rgx ]] ||
+    die "$description path ${path@Q} not matching regex ${rgx@Q}."
+
+  rgx='(^|/)\.\.?(/|$)'
+  if [[ $path =~ $rgx ]]; then
+    die "$description path ${path@Q} contains relative path component(s)."
+  fi
+}
+
 check_python()
 {
   local actual expected out
@@ -570,15 +587,7 @@ fi
 
 if [ -n "$TARGET_DIR" ]; then
   if [ -n "$MODULES_PATH" ]; then
-    unset rgx
-    rgx='^[^/]+(/[^/]+)*'
-    [[ $MODULES_PATH =~ $rgx ]] ||
-      die "Modules path ${MODULES_PATH@Q} not matching regex ${rgx@Q}."
-    rgx='(^|/)\.\.?(/|$)'
-    if [[ $MODULES_PATH =~ $rgx ]]; then
-      die "Modules path ${MODULES_PATH@Q} contains relative path component(s)."
-    fi
-    unset rgx
+    check_arg_valid_path "$MODULES_PATH" 'Modules'
   else
     MODULES_PATH="lib/python$PYTHON_VERSION/site-packages"
   fi
