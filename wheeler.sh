@@ -47,14 +47,15 @@ executable for python3 will be expected to be found. Required option.
 
 --target-dir <path>
 Triggers unpacking of the wheel, where the specified directory is used in a
-"DESTDIR" sense. The prefix and module path will be appended to this path.
+"DESTDIR" sense.
 
 --modules-path <relative path>
-Use this module path rather than 'lib/python<version>/site-packages' when
-unpacking the wheel.
+Extract the modules into this path, relative to the target dir.
+Default: <prefix>/lib/python<version>/site-packages
 
---entrypoints-dir <path>
-Generate entrypoints defined in the wheel and save to this directory.
+--entrypoints-path <path>
+Generate entrypoints into this path, relative to the target dir.
+Default: <prefix>/bin
 
 --wheel-dir <path>
 Copy the wheel into this directory.
@@ -298,8 +299,10 @@ EOF
   out="$(run python3 "$f" "$WHEEL_FILE" "$_WHEEL_DIST_INFO_DIRNAME")"
   rm -- "$f"
 
-  [ -n "$out" ] ||
-    die 'No entrypoints data found in wheel.'
+  if [ -z "$out" ]; then
+    _ENTRYPOINTS_PARSE_ERROR='No entrypoints data found in wheel.'
+    return 0
+  fi
 
   found=''
   s='[:space:]'
@@ -315,12 +318,17 @@ EOF
     fi
   done <<< "$out"
 
-  [ -n "$found" ] ||
-    die "No console_scripts section found in wheel's entrypoints data."
+  if [ -z "$found" ]; then
+    _ENTRYPOINTS_PARSE_ERROR="No console_scripts section found in wheel's \
+entrypoints data."
+    return 0
+  fi
 
-  [ "${#_ENTRYPOINTS[@]}" -ge '1' ] ||
-    die "Found console_scripts section in wheel's entrypoints data, but no \
-(valid) entrypoints."
+  if [ "${#_ENTRYPOINTS[@]}" == '0' ]; then
+    _ENTRYPOINTS_PARSE_ERROR="Found console_scripts section in wheel's \
+entrypoints data, but no (valid) entrypoints."
+    return 0
+  fi
 
   if [ "${#_ENTRYPOINTS_EXPECTED[@]}" == '0' ]; then
     _ENTRYPOINTS_EXPECTED=("${!_ENTRYPOINTS[@]}")
@@ -329,8 +337,10 @@ EOF
     for name in "${_ENTRYPOINTS_EXPECTED[@]}"; do
       [ -n "${_ENTRYPOINTS["$name"]-}" ] || missing+=("$name")
     done
-    [ "${#missing[@]}" == '0' ] ||
-      die "Missing expected entrypoint(s): ${missing[*]@Q}"
+    if [ "${#missing[@]}" -ge '1' ]; then
+      _ENTRYPOINTS_PARSE_ERROR="Missing expected entrypoint(s): ${missing[*]@Q}"
+      return 0
+    fi
   fi
 }
 
@@ -348,10 +358,10 @@ if __name__ == '__main__':
     sys.exit($function())
 EOF
 
-    f="$ENTRYPOINTS_DIR/$name"
+    f="$ENTRYPOINTS_TARGET_DIR/$name"
     info "Generating entrypoint ${f@Q}."
-    printf '%s\n' "${data[@]}" > "$ENTRYPOINTS_DIR/$name"
-    chmod -- 0755 "$ENTRYPOINTS_DIR/$name"
+    printf '%s\n' "${data[@]}" > "$f"
+    chmod -- 0755 "$f"
   done
 }
 
@@ -442,7 +452,7 @@ shopt -s inherit_errexit
 
 unset _GLOBALS
 _GLOBALS=(
-  'ENTRYPOINTS_DIR'
+  'ENTRYPOINTS_PATH'
   'MODULES_PATH'
   'MODULES_TARGET_DIR'
   'PREFIX'
@@ -454,6 +464,7 @@ _GLOBALS=(
   'WHEEL_INSTALLED'
   'WHEEL_NAME'
   'WORK_DIR'
+  '_ENTRYPOINTS_PARSE_ERROR'
   '_EXPECTED_EXIT'
   '_MODE_PYTEST'
   '_MODE_UNITTEST'
@@ -500,9 +511,9 @@ while [ -n "${1+set}" ]; do
         die "Argument ${1@Q} requires a non-empty comma-separated value."
       shift 2
       ;;
-    '--entrypoints-dir')
+    '--entrypoints-path')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
-      ENTRYPOINTS_DIR="$2"
+      ENTRYPOINTS_PATH="$2"
       shift 2
       ;;
     '--modules-path')
@@ -581,20 +592,22 @@ done
 
 check_python
 
-if [ -n "$ENTRYPOINTS_DIR" ]; then
-  run mkdir -p -- "$ENTRYPOINTS_DIR"
-fi
-
 if [ -n "$TARGET_DIR" ]; then
   if [ -n "$MODULES_PATH" ]; then
     check_arg_valid_path "$MODULES_PATH" 'Modules'
   else
-    MODULES_PATH="lib/python$PYTHON_VERSION/site-packages"
+    MODULES_PATH="${PREFIX#/}/lib/python$PYTHON_VERSION/site-packages"
   fi
 
-  TARGET_DIR+="$PREFIX"
+  if [ -n "$ENTRYPOINTS_PATH" ]; then
+    check_arg_valid_path "$ENTRYPOINTS_PATH" 'Entrypoints'
+  else
+    ENTRYPOINTS_PATH="${PREFIX#/}/bin"
+  fi
+
+  ENTRYPOINTS_TARGET_DIR="$TARGET_DIR/$ENTRYPOINTS_PATH"
   MODULES_TARGET_DIR="$TARGET_DIR/$MODULES_PATH"
-  run mkdir -p -- "$MODULES_TARGET_DIR"
+  run mkdir -p -- "$ENTRYPOINTS_TARGET_DIR" "$MODULES_TARGET_DIR"
 fi
 
 if [ -n "$WHEEL_DIR" ]; then
@@ -667,16 +680,19 @@ if [ -n "$TARGET_DIR" ]; then
   info "Unpacking wheel into ${MODULES_TARGET_DIR@Q}..."
   wheel_unpack
   info 'Successfully unpacked wheel.'
-fi
 
-if [ -n "$ENTRYPOINTS_DIR" ]; then
   info 'Parsing entrypoints from wheel...'
   wheel_entrypoint_parse
-  info "Successfully parsed entrypoints."
-
-  info 'Generating entrypoints from wheel...'
-  wheel_entrypoint_generate
-  info "Successfully generated entrypoints."
+  if [ "${#_ENTRYPOINTS_EXPECTED[@]}" == '0' ]; then
+    info "No entrypoints found in wheel."
+  elif [ -n "$_ENTRYPOINTS_PARSE_ERROR" ]; then
+    die "$_ENTRYPOINTS_PARSE_ERROR"
+  else
+    info "Successfully parsed entrypoints."
+    info 'Generating entrypoints from wheel...'
+    wheel_entrypoint_generate
+    info "Successfully generated entrypoints."
+  fi
 fi
 
 if [ -n "$WHEEL_DIR" ]; then
