@@ -115,6 +115,8 @@ die()
 
 exit_trap()
 {
+  local d
+
   if [ -z "$_EXPECTED_EXIT" ]; then
     error 'Unexpected exit due to non-zero exit status.'
   fi
@@ -122,6 +124,12 @@ exit_trap()
   if [ -n "$TMP_DIR" ]; then
     rm -rf -- "$TMP_DIR"
   fi
+
+  for d in "$ENTRYPOINTS_TARGET_DIR" "$MODULES_TARGET_DIR" "$WHEEL_DIR"; do
+    [ -n "$d" ] || continue
+    rmdir -p --ignore-fail-on-non-empty -- "$d" 2>&- || :
+  done
+
   if [ -n "$WHEEL_INSTALLED" ]; then
     if ! out="$(wheel_uninstall 2>&1)"; then
       error "Failed uninstalling wheel during rollback with output ${out@Q}."
@@ -712,6 +720,4 @@ if [ -n "$WHEEL_DIR" ]; then
 fi
 
 info 'All done.'
-
-rm -rf -- "$TMP_DIR"
-trap '' EXIT
+_EXPECTED_EXIT='yes'
