@@ -236,7 +236,7 @@ hook_cmd_run()
   (
     for v in "${_GLOBALS[@]}"; do
       # shellcheck disable=2163 # This does not export 'v'
-      [[ $v =~ ^[_@] ]] || export "$v"
+      [[ $v =~ ^[_@=] ]] || export "$v"
     done
     export STAGE="$1"
     run bash -c "$2"
