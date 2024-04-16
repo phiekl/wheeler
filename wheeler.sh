@@ -67,6 +67,9 @@ one by one, during verification. Defaults to the name of the wheel.
 --expect-entrypoints <entrypoint,entrypointN,..>
 Expect these entrypoints to be defined in the wheel and generate only these.
 
+--build-only
+Only build and optionally extract the wheel, do not verify or test the wheel.
+
 --pytest
 Execute pytest after the wheel has been built and installed.
 
@@ -464,6 +467,7 @@ _GLOBALS=(
   'WHEEL_INSTALLED'
   'WHEEL_NAME'
   'WORK_DIR'
+  '_BUILD_ONLY'
   '_ENTRYPOINTS_PARSE_ERROR'
   '_EXPECTED_EXIT'
   '_MODE_PYTEST'
@@ -496,6 +500,10 @@ while [ -n "${1+set}" ]; do
   case "$1" in
     '--help')
       syntax
+      ;;
+    '--build-only')
+      _BUILD_ONLY='yes'
+      shift
       ;;
     '--expect-entrypoints')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
@@ -630,51 +638,53 @@ hook_cmd_run 'post-build' "$_POST_BUILD_CMD"
 [ "${#_MODULES_EXPECTED[@]}" -ge '1' ] ||
   _MODULES_EXPECTED=("$WHEEL_NAME")
 
-info "Verifying contents of wheel (expecting: ${_MODULES_EXPECTED[*]@Q})..."
-wheel_verify_content
-info 'All expected modules found in wheel.'
+if [ -z "$_BUILD_ONLY" ]; then
+  info "Verifying contents of wheel (expecting: ${_MODULES_EXPECTED[*]@Q})..."
+  wheel_verify_content
+  info 'All expected modules found in wheel.'
 
-info "Verifying that the wheel's modules are not already installed..."
-_installed=()
-for _module in "${_MODULES_EXPECTED[@]}"; do
-  check_module_import "$_module"
-  [ -n "$_MODULE_IMPORT_ERROR" ] || _installed+=("$_module")
-done
-[ "${#_installed[@]}" == '0' ] ||
-  die "Found already installed modules in this python environment: \
+  info "Verifying that the wheel's modules are not already installed..."
+  _installed=()
+  for _module in "${_MODULES_EXPECTED[@]}"; do
+    check_module_import "$_module"
+    [ -n "$_MODULE_IMPORT_ERROR" ] || _installed+=("$_module")
+  done
+  [ "${#_installed[@]}" == '0' ] ||
+    die "Found already installed modules in this python environment: \
 ${_installed[*]@Q}"
 
-hook_cmd_run 'pre-install' "$_POST_INSTALL_CMD"
-info 'Installing wheel...'
-wheel_install
-info 'Successfully installed wheel.'
-hook_cmd_run 'post-install' "$_POST_INSTALL_CMD"
+  hook_cmd_run 'pre-install' "$_POST_INSTALL_CMD"
+  info 'Installing wheel...'
+  wheel_install
+  info 'Successfully installed wheel.'
+  hook_cmd_run 'post-install' "$_POST_INSTALL_CMD"
 
-info "Verifying that the installed wheel's modules can be imported..."
-for _module in "${_MODULES_EXPECTED[@]}"; do
-  check_module_import "$_module"
-  [ -z "$_MODULE_IMPORT_ERROR" ] ||
-    die "Failed to import module ${_module@Q}: $_MODULE_IMPORT_ERROR"
-done
-info "Successfully imported module(s): ${_MODULES_EXPECTED[*]@Q}"
+  info "Verifying that the installed wheel's modules can be imported..."
+  for _module in "${_MODULES_EXPECTED[@]}"; do
+    check_module_import "$_module"
+    [ -z "$_MODULE_IMPORT_ERROR" ] ||
+      die "Failed to import module ${_module@Q}: $_MODULE_IMPORT_ERROR"
+  done
+  info "Successfully imported module(s): ${_MODULES_EXPECTED[*]@Q}"
 
-if [ -n "$_MODE_PYTEST" ]; then
-  info 'Running tests using pytest...'
-  run python3 -m pytest -v
-  info 'Successfully run tests using pytest.'
+  if [ -n "$_MODE_PYTEST" ]; then
+    info 'Running tests using pytest...'
+    run python3 -m pytest -v
+    info 'Successfully run tests using pytest.'
+  fi
+
+  if [ -n "$_MODE_UNITTEST" ]; then
+    info 'Running tests using unittest...'
+    run python3 -m unittest discover tests -v
+    info 'Successfully run tests using unittest.'
+  fi
+
+  hook_cmd_run 'pre-uninstall' "$_POST_UNINSTALL_CMD"
+  info 'Uninstalling wheel again...'
+  wheel_uninstall
+  info 'Successfully uninstalled wheel.'
+  hook_cmd_run 'post-uninstall' "$_POST_UNINSTALL_CMD"
 fi
-
-if [ -n "$_MODE_UNITTEST" ]; then
-  info 'Running tests using unittest...'
-  run python3 -m unittest discover tests -v
-  info 'Successfully run tests using unittest.'
-fi
-
-hook_cmd_run 'pre-uninstall' "$_POST_UNINSTALL_CMD"
-info 'Uninstalling wheel again...'
-wheel_uninstall
-info 'Successfully uninstalled wheel.'
-hook_cmd_run 'post-uninstall' "$_POST_UNINSTALL_CMD"
 
 if [ -n "$TARGET_DIR" ]; then
   info "Unpacking wheel into ${MODULES_TARGET_DIR@Q}..."
