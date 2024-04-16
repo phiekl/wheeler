@@ -501,12 +501,14 @@ _GLOBALS=(
   '=_ENTRYPOINTS'
 )
 for v in "${_GLOBALS[@]}"; do
-  unset "$v"
   if [ "${v:0:1}" == '@' ]; then
+    unset "${v:1}"
     eval "${v:1}=()"
   elif [ "${v:0:1}" == '=' ]; then
+    unset "${v:1}"
     eval declare -A "${v:1}=()"
   else
+    unset "$v"
     eval "$v=''"
   fi
 done
