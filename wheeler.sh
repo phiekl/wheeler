@@ -59,11 +59,11 @@ Generate entrypoints defined in the wheel and save to this directory.
 --wheel-dir <path>
 Copy the wheel into this directory.
 
---expected-modules <module,moduleN,..>
+--expect-modules <module,moduleN,..>
 Expect these comma-separated module names in the wheel, which will be imported
 one by one, during verification. Defaults to the name of the wheel.
 
---expected-entrypoints <entrypoint,entrypointN,..>
+--expect-entrypoints <entrypoint,entrypointN,..>
 Expect these entrypoints to be defined in the wheel and generate only these.
 
 --pytest
@@ -486,14 +486,14 @@ while [ -n "${1+set}" ]; do
     '--help')
       syntax
       ;;
-    '--expected-entrypoints')
+    '--expect-entrypoints')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       csv_read '_ENTRYPOINTS_EXPECTED' "$2"
       [ "${#_ENTRYPOINTS_EXPECTED[@]}" -ge '1' ] ||
         die "Argument ${1@Q} requires a non-empty comma-separated value."
       shift 2
       ;;
-    '--expected-modules')
+    '--expect-modules')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       csv_read '_MODULES_EXPECTED' "$2"
       [ "${#_MODULES_EXPECTED[@]}" -ge '1' ] ||
