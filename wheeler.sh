@@ -64,6 +64,9 @@ Copy the wheel into this directory.
 Expect these comma-separated module names in the wheel, which will be imported
 one by one, during verification. Defaults to the name of the wheel.
 
+--expect-files <file1,fileN,..>
+Expect these extra non-module files in the wheel's top directory.
+
 --expect-entrypoints <entrypoint,entrypointN,..>
 Expect these entrypoints to be defined in the wheel and generate only these.
 
@@ -432,7 +435,7 @@ EOF
   rm -- "$f"
 
   declare -A expected=()
-  for f in "${_MODULES_EXPECTED[@]}"; do
+  for f in "${_MODULES_EXPECTED[@]}" "${_FILES_EXPECTED[@]}"; do
     expected["$f"]='set'
   done
   dist_info=()
@@ -489,6 +492,7 @@ _GLOBALS=(
   '_PRE_UNINSTALL_CMD'
   '_WHEEL_DIST_INFO_DIRNAME'
   '@_ENTRYPOINTS_EXPECTED'
+  '@_FILES_EXPECTED'
   '@_MODULES_EXPECTED'
   '=_ENTRYPOINTS'
 )
@@ -524,6 +528,13 @@ while [ -n "${1+set}" ]; do
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       csv_read '_MODULES_EXPECTED' "$2"
       [ "${#_MODULES_EXPECTED[@]}" -ge '1' ] ||
+        die "Argument ${1@Q} requires a non-empty comma-separated value."
+      shift 2
+      ;;
+    '--expect-files')
+      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
+      csv_read '_FILES_EXPECTED' "$2"
+      [ "${#_FILES_EXPECTED[@]}" -ge '1' ] ||
         die "Argument ${1@Q} requires a non-empty comma-separated value."
       shift 2
       ;;
