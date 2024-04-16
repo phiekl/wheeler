@@ -85,6 +85,8 @@ Execute unittest after the wheel has been built and installed.
 --post-install-cmd <cmd>
 --pre-uninstall-cmd <cmd>
 --post-uninstall-cmd <cmd>
+--post-unpack-cmd <cmd>
+--post-entrypoint-generate-cmd <cmd>
 Execute a command via bash -c <cmd> at a certain stage, with env:
 $env_lines
 EOF
@@ -485,8 +487,10 @@ _GLOBALS=(
   '_MODE_UNITTEST'
   '_MODULE_IMPORT_ERROR'
   '_POST_BUILD_CMD'
+  '_POST_ENTRYPOINT_GENERATE_CMD'
   '_POST_INSTALL_CMD'
   '_POST_UNINSTALL_CMD'
+  '_POST_UNPACK_CMD'
   '_PRE_BUILD_CMD'
   '_PRE_INSTALL_CMD'
   '_PRE_UNINSTALL_CMD'
@@ -553,6 +557,11 @@ while [ -n "${1+set}" ]; do
       _POST_BUILD_CMD="$2"
       shift 2
       ;;
+    '--post-entrypoint-generate-cmd')
+      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
+      _POST_ENTRYPOINT_GENERATE_CMD="$2"
+      shift 2
+      ;;
     '--post-install-cmd')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       _POST_INSTALL_CMD="$2"
@@ -561,6 +570,11 @@ while [ -n "${1+set}" ]; do
     '--post-uninstall-cmd')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       _POST_UNINSTALL_CMD="$2"
+      shift 2
+      ;;
+    '--post-unpack-cmd')
+      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
+      _POST_UNPACK_CMD="$2"
       shift 2
       ;;
     '--pre-build-cmd')
@@ -709,6 +723,7 @@ if [ -n "$TARGET_DIR" ]; then
   info "Unpacking wheel into ${MODULES_TARGET_DIR@Q}..."
   wheel_unpack
   info 'Successfully unpacked wheel.'
+  hook_cmd_run 'post-unpack' "$_POST_UNPACK_CMD"
 
   info 'Parsing entrypoints from wheel...'
   wheel_entrypoint_parse
@@ -721,6 +736,7 @@ if [ -n "$TARGET_DIR" ]; then
     info 'Generating entrypoints from wheel...'
     wheel_entrypoint_generate
     info "Successfully generated entrypoints."
+    hook_cmd_run 'post-entrypoints-generate' "$_POST_ENTRYPOINT_GENERATE_CMD"
   fi
 fi
 
