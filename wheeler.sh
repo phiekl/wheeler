@@ -46,7 +46,7 @@ Change to this directory before performing any operations.
 executable for python3 will be expected to be found. Required option.
 
 --target-dir <path>
-Triggers unpacking of the wheel, where the specified directory is used in a
+Triggers extraction of the wheel, where the specified directory is used in a
 "DESTDIR" sense.
 
 --modules-path <relative path>
@@ -85,7 +85,7 @@ Execute unittest after the wheel has been built and installed.
 --post-install-cmd <cmd>
 --pre-uninstall-cmd <cmd>
 --post-uninstall-cmd <cmd>
---post-unpack-cmd <cmd>
+--post-extraction-cmd <cmd>
 --post-entrypoint-generate-cmd <cmd>
 Execute a command via bash -c <cmd> at a certain stage, with env:
 $env_lines
@@ -428,6 +428,24 @@ EOF
   done
 }
 
+wheel_extract()
+{
+  local data f
+
+  f="$TMP_DIR/wheel_extract.py"
+  mkdir -p -- "${f%/*}"
+  readarray -t data << 'EOF'
+import sys
+import zipfile
+with zipfile.ZipFile(sys.argv[1], 'r') as zh:
+    zh.extractall(sys.argv[2])
+EOF
+  printf '%s\n' "${data[@]}" > "$f"
+
+  run python3 "$f" "$WHEEL_FILE" "$MODULES_TARGET_DIR"
+  rm -- "$f"
+}
+
 wheel_install()
 {
   run python3 -m pip install \
@@ -446,24 +464,6 @@ wheel_uninstall()
 {
   WHEEL_INSTALLED='' # unset it prior to uninstall to not trigger exit trap
   run python3 -m pip uninstall --no-cache-dir --yes -- "$WHEEL_NAME"
-}
-
-wheel_unpack()
-{
-  local data dist_info expected f module out unexpected
-
-  f="$TMP_DIR/wheel_unpack.py"
-  mkdir -p -- "${f%/*}"
-  readarray -t data << 'EOF'
-import sys
-import zipfile
-with zipfile.ZipFile(sys.argv[1], 'r') as zh:
-    zh.extractall(sys.argv[2])
-EOF
-  printf '%s\n' "${data[@]}" > "$f"
-
-  out="$(run python3 "$f" "$WHEEL_FILE" "$MODULES_TARGET_DIR")"
-  rm -- "$f"
 }
 
 wheel_verify_content()
@@ -551,9 +551,9 @@ _GLOBALS=(
   '_MODULE_IMPORT_ERROR'
   '_POST_BUILD_CMD'
   '_POST_ENTRYPOINT_GENERATE_CMD'
+  '_POST_EXTRACTION_CMD'
   '_POST_INSTALL_CMD'
   '_POST_UNINSTALL_CMD'
-  '_POST_UNPACK_CMD'
   '_PRE_BUILD_CMD'
   '_PRE_INSTALL_CMD'
   '_PRE_UNINSTALL_CMD'
@@ -627,6 +627,11 @@ while [ -n "${1+set}" ]; do
       _POST_ENTRYPOINT_GENERATE_CMD="$2"
       shift 2
       ;;
+    '--post-extraction-cmd')
+      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
+      _POST_EXTRACTION_CMD="$2"
+      shift 2
+      ;;
     '--post-install-cmd')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       _POST_INSTALL_CMD="$2"
@@ -635,11 +640,6 @@ while [ -n "${1+set}" ]; do
     '--post-uninstall-cmd')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       _POST_UNINSTALL_CMD="$2"
-      shift 2
-      ;;
-    '--post-unpack-cmd')
-      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
-      _POST_UNPACK_CMD="$2"
       shift 2
       ;;
     '--pre-build-cmd')
@@ -787,10 +787,10 @@ ${_installed[*]@Q}"
 fi
 
 if [ -n "$TARGET_DIR" ]; then
-  info "Unpacking wheel into ${MODULES_TARGET_DIR@Q}..."
-  wheel_unpack
-  info 'Successfully unpacked wheel.'
-  hook_cmd_run 'post-unpack' "$_POST_UNPACK_CMD"
+  info "Extracting files from wheel into ${MODULES_TARGET_DIR@Q}..."
+  wheel_extract
+  info 'Successfully extracted files from wheel.'
+  hook_cmd_run 'post-extraction' "$_POST_EXTRACTION_CMD"
 
   if [ -z "$_BUILD_ONLY" ] && [ "${#_ENTRYPOINTS_EXPECTED[@]}" -ge '1' ]; then
     info 'Generating entrypoints from wheel...'
