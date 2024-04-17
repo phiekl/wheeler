@@ -120,7 +120,7 @@ die()
 
 exit_trap()
 {
-  local d
+  local d paths
 
   if [ -z "$_EXPECTED_EXIT" ]; then
     error 'Unexpected exit due to non-zero exit status.'
@@ -130,7 +130,12 @@ exit_trap()
     rm -rf -- "$TMP_DIR"
   fi
 
-  for d in "$ENTRYPOINTS_TARGET_DIR" "$MODULES_TARGET_DIR" "$WHEEL_DIR"; do
+  paths=(
+    "${ENTRYPOINTS_TARGET_DIR-}"
+    "${MODULES_TARGET_DIR-}"
+    "${WHEEL_DIR-}"
+  )
+  for d in "${paths[@]}"; do
     [ -n "$d" ] || continue
     rmdir -p --ignore-fail-on-non-empty -- "$d" 2>&- || :
   done
