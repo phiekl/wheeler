@@ -377,6 +377,8 @@ wheel_entrypoints_parse()
 
 wheel_entrypoints_generate()
 {
+  local data f function module name
+
   for name in "${_ENTRYPOINTS_EXPECTED[@]}"; do
     module="${_ENTRYPOINTS["$name"]%%:*}"
     function="${_ENTRYPOINTS["$name"]#*:}"
