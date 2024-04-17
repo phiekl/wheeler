@@ -675,15 +675,25 @@ while [ -n "${1+set}" ]; do
       shift 2
       ;;
     '--extract-files')
-      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
-      csv_read '_FILES_EXTRACT' "$2"
-      check_arg_filename_items "$1" "${_FILES_EXTRACT[@]}"
+      if [ -n "${2-}" ]; then
+        csv_read '_FILES_EXTRACT' "$2"
+        check_arg_filename_items "$1" "${_FILES_EXTRACT[@]}"
+      elif [ -z "${2-unset}" ]; then
+        _FILES_EXTRACT=('/NOOP')
+      else
+        die "Argument ${1@Q} requires a value."
+      fi
       shift 2
       ;;
     '--extract-modules')
-      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
-      csv_read '_MODULES_EXTRACT' "$2"
-      check_arg_filename_items "$1" "${_MODULES_EXTRACT[@]}"
+      if [ -n "${2-}" ]; then
+        csv_read '_MODULES_EXTRACT' "$2"
+        check_arg_filename_items "$1" "${_MODULES_EXTRACT[@]}"
+      elif [ -z "${2-unset}" ]; then
+        _MODULES_EXTRACT=('/NOOP')
+      else
+        die "Argument ${1@Q} requires a value."
+      fi
       shift 2
       ;;
     '--entrypoints-path')
@@ -692,9 +702,14 @@ while [ -n "${1+set}" ]; do
       shift 2
       ;;
     '--generate-entrypoints')
-      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
-      csv_read '_ENTRYPOINTS_GENERATE' "$2"
-      check_arg_filename_items "$1" "${_ENTRYPOINTS_GENERATE[@]}"
+      if [ -n "${2-}" ]; then
+        csv_read '_ENTRYPOINTS_GENERATE' "$2"
+        check_arg_filename_items "$1" "${_ENTRYPOINTS_GENERATE[@]}"
+      elif [ -z "${2-unset}" ]; then
+        _ENTRYPOINTS_GENERATE=('/NOOP')
+      else
+        die "Argument ${1@Q} requires a value."
+      fi
       shift 2
       ;;
     '--modules-path')
@@ -784,28 +799,40 @@ done
 check_python
 
 if [ "${#_ENTRYPOINTS_GENERATE[@]}" -ge '1' ]; then
-  check_arg_list_a_contains_all_b_list_items \
-    --expect-entrypoints --generate-entrypoints \
-    "${#_ENTRYPOINTS_EXPECTED[@]}" "${#_ENTRYPOINTS_GENERATE[@]}" \
-    "${_ENTRYPOINTS_EXPECTED[@]}" "${_ENTRYPOINTS_GENERATE[@]}"
+  if [ "${_ENTRYPOINTS_GENERATE[0]}" == '/NOOP' ]; then
+    _ENTRYPOINTS_GENERATE=()
+  else
+    check_arg_list_a_contains_all_b_list_items \
+      --expect-entrypoints --generate-entrypoints \
+      "${#_ENTRYPOINTS_EXPECTED[@]}" "${#_ENTRYPOINTS_GENERATE[@]}" \
+      "${_ENTRYPOINTS_EXPECTED[@]}" "${_ENTRYPOINTS_GENERATE[@]}"
+  fi
 else
   _ENTRYPOINTS_GENERATE=("${_ENTRYPOINTS_EXPECTED[@]}")
 fi
 
 if [ "${#_FILES_EXTRACT[@]}" -ge '1' ]; then
-  check_arg_list_a_contains_all_b_list_items \
-    --expect-files --extract-files \
-    "${#_FILES_EXPECTED[@]}" "${#_FILES_EXTRACT[@]}" \
-    "${_FILES_EXPECTED[@]}" "${_FILES_EXTRACT[@]}"
+  if [ "${_FILES_EXTRACT[0]}" == '/NOOP' ]; then
+    _FILES_EXTRACT=()
+  else
+    check_arg_list_a_contains_all_b_list_items \
+      --expect-files --extract-files \
+      "${#_FILES_EXPECTED[@]}" "${#_FILES_EXTRACT[@]}" \
+      "${_FILES_EXPECTED[@]}" "${_FILES_EXTRACT[@]}"
+  fi
 else
   _FILES_EXTRACT=("${_FILES_EXPECTED[@]}")
 fi
 
 if [ "${#_MODULES_EXTRACT[@]}" -ge '1' ]; then
-  check_arg_list_a_contains_all_b_list_items \
-    --expect-modules --extract-modules \
-    "${#_MODULES_EXPECTED[@]}" "${#_MODULES_EXTRACT[@]}" \
-    "${_MODULES_EXPECTED[@]}" "${_MODULES_EXTRACT[@]}"
+  if [ "${_MODULES_EXTRACT[0]}" == '/NOOP' ]; then
+    _MODULES_EXTRACT=()
+  else
+    check_arg_list_a_contains_all_b_list_items \
+      --expect-modules --extract-modules \
+      "${#_MODULES_EXPECTED[@]}" "${#_MODULES_EXTRACT[@]}" \
+      "${_MODULES_EXPECTED[@]}" "${_MODULES_EXTRACT[@]}"
+  fi
 else
   _MODULES_EXTRACT=("${_MODULES_EXPECTED[@]}")
 fi
