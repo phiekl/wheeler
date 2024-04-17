@@ -183,6 +183,23 @@ run()
 }
 
 # main functions below
+check_arg_filename_items()
+{
+  local arg arg_name
+
+  arg_name="$1"
+  shift
+
+  [ "$#" -ge '1' ] ||
+    die "Argument ${arg_name@Q} requires a non-empty comma-separated value."
+
+  for arg; do
+    if [[ $arg =~ / ]]; then
+      die "Argument ${arg_name@Q} (${*@Q}) must not contain any / characters."
+    fi
+  done
+}
+
 check_arg_valid_path()
 {
   local description path rgx
@@ -642,36 +659,31 @@ while [ -n "${1+set}" ]; do
     '--expect-entrypoints')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       csv_read '_ENTRYPOINTS_EXPECTED' "$2"
-      [ "${#_ENTRYPOINTS_EXPECTED[@]}" -ge '1' ] ||
-        die "Argument ${1@Q} requires a non-empty comma-separated value."
+      check_arg_filename_items "$1" "${_ENTRYPOINTS_EXPECTED[@]}"
       shift 2
       ;;
     '--expect-files')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       csv_read '_FILES_EXPECTED' "$2"
-      [ "${#_FILES_EXPECTED[@]}" -ge '1' ] ||
-        die "Argument ${1@Q} requires a non-empty comma-separated value."
+      check_arg_filename_items "$1" "${_FILES_EXPECTED[@]}"
       shift 2
       ;;
     '--expect-modules')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       csv_read '_MODULES_EXPECTED' "$2"
-      [ "${#_MODULES_EXPECTED[@]}" -ge '1' ] ||
-        die "Argument ${1@Q} requires a non-empty comma-separated value."
+      check_arg_filename_items "$1" "${_MODULES_EXPECTED[@]}"
       shift 2
       ;;
     '--extract-files')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       csv_read '_FILES_EXTRACT' "$2"
-      [ "${#_FILES_EXTRACT[@]}" -ge '1' ] ||
-        die "Argument ${1@Q} requires a non-empty comma-separated value."
+      check_arg_filename_items "$1" "${_FILES_EXTRACT[@]}"
       shift 2
       ;;
     '--extract-modules')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       csv_read '_MODULES_EXTRACT' "$2"
-      [ "${#_MODULES_EXTRACT[@]}" -ge '1' ] ||
-        die "Argument ${1@Q} requires a non-empty comma-separated value."
+      check_arg_filename_items "$1" "${_MODULES_EXTRACT[@]}"
       shift 2
       ;;
     '--entrypoints-path')
@@ -682,8 +694,7 @@ while [ -n "${1+set}" ]; do
     '--generate-entrypoints')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       csv_read '_ENTRYPOINTS_GENERATE' "$2"
-      [ "${#_ENTRYPOINTS_GENERATE[@]}" -ge '1' ] ||
-        die "Argument ${1@Q} requires a non-empty comma-separated value."
+      check_arg_filename_items "$1" "${_ENTRYPOINTS_GENERATE[@]}"
       shift 2
       ;;
     '--modules-path')
