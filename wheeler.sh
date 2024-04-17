@@ -300,9 +300,9 @@ wheel_build()
   WHEEL_FILE="$f"
 }
 
-wheel_entrypoint_parse()
+wheel_entrypoints_file_parse()
 {
-  local data f found line missing out rgx s
+  local data f found line out rgx s
 
   f="$TMP_DIR/wheel_entrypoint_generate.py"
   mkdir -p -- "${f%/*}"
@@ -350,6 +350,13 @@ entrypoints data."
 entrypoints data, but no (valid) entrypoints."
     return 0
   fi
+}
+
+wheel_entrypoints_parse()
+{
+  local name missing
+
+  wheel_entrypoints_file_parse
 
   if [ "${#_ENTRYPOINTS_EXPECTED[@]}" == '0' ]; then
     _ENTRYPOINTS_EXPECTED=("${!_ENTRYPOINTS[@]}")
@@ -365,7 +372,7 @@ entrypoints data, but no (valid) entrypoints."
   fi
 }
 
-wheel_entrypoint_generate()
+wheel_entrypoints_generate()
 {
   for name in "${_ENTRYPOINTS_EXPECTED[@]}"; do
     module="${_ENTRYPOINTS["$name"]%%:*}"
@@ -748,7 +755,7 @@ if [ -n "$TARGET_DIR" ]; then
   hook_cmd_run 'post-unpack' "$_POST_UNPACK_CMD"
 
   info 'Parsing entrypoints from wheel...'
-  wheel_entrypoint_parse
+  wheel_entrypoints_parse
   if [ "${#_ENTRYPOINTS_EXPECTED[@]}" == '0' ]; then
     info "No entrypoints found in wheel."
   elif [ -n "$_ENTRYPOINTS_PARSE_ERROR" ]; then
@@ -756,7 +763,7 @@ if [ -n "$TARGET_DIR" ]; then
   else
     info "Successfully parsed entrypoints."
     info 'Generating entrypoints from wheel...'
-    wheel_entrypoint_generate
+    wheel_entrypoints_generate
     info "Successfully generated entrypoints."
     hook_cmd_run 'post-entrypoints-generate' "$_POST_ENTRYPOINT_GENERATE_CMD"
   fi
