@@ -70,6 +70,9 @@ Expect these extra non-module files in the wheel's top directory.
 --expect-entrypoints <entrypoint,entrypointN,..>
 Expect these entrypoints to be defined in the wheel.
 
+--generate-entrypoints <entrypoint,entrypointN,..>
+Generate only these entrypoints (defaults to the ones expected).
+
 --build-only
 Only build and optionally extract the wheel, do not verify or test the wheel.
 
@@ -189,6 +192,39 @@ check_arg_valid_path()
   if [[ $path =~ $rgx ]]; then
     die "$description path ${path@Q} contains relative path component(s)."
   fi
+}
+
+check_arg_list_a_contains_all_b_list_items()
+{
+  local a_count a_index a_items a_name b_count b_items b_name item missing
+
+  a_name="$1"
+  b_name="$2"
+  a_count="$3"
+  b_count="$4"
+  shift 4
+
+  [ "$#" == "$((a_count + b_count))" ] ||
+    die "BUG: a_count(${a_count@Q}) b_count(${b_count@Q}) argc($#)"
+
+  a_items=("${@:1:$a_count}")
+  declare -A a_index=()
+  for item in "${a_items[@]}"; do
+    a_index["$item"]='set'
+  done
+  shift "$a_count"
+
+  b_items=("$@")
+
+  missing=()
+  for item in "${b_items[@]}"; do
+    [ -n "${a_index["$item"]-}" ] ||
+      missing+=("$item")
+  done
+
+  [ "${#missing[@]}" == '0' ] ||
+    die "All items in argument $b_name (${b_items[*]@Q}) must also be set for \
+$a_name (${a_items[*]@Q}), missing: ${missing[*]@Q}"
 }
 
 check_python()
@@ -409,7 +445,7 @@ wheel_entrypoints_generate()
 {
   local data f function module name
 
-  for name in "${_ENTRYPOINTS_EXPECTED[@]}"; do
+  for name in "${_ENTRYPOINTS_GENERATE[@]}"; do
     module="${_ENTRYPOINTS["$name"]%%:*}"
     function="${_ENTRYPOINTS["$name"]#*:}"
 
@@ -559,6 +595,7 @@ _GLOBALS=(
   '_PRE_UNINSTALL_CMD'
   '_WHEEL_DIST_INFO_DIRNAME'
   '@_ENTRYPOINTS_EXPECTED'
+  '@_ENTRYPOINTS_GENERATE'
   '@_FILES_EXPECTED'
   '@_MODULES_EXPECTED'
   '=_ENTRYPOINTS'
@@ -610,6 +647,13 @@ while [ -n "${1+set}" ]; do
     '--entrypoints-path')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       ENTRYPOINTS_PATH="$2"
+      shift 2
+      ;;
+    '--generate-entrypoints')
+      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
+      csv_read '_ENTRYPOINTS_GENERATE' "$2"
+      [ "${#_ENTRYPOINTS_GENERATE[@]}" -ge '1' ] ||
+        die "Argument ${1@Q} requires a non-empty comma-separated value."
       shift 2
       ;;
     '--modules-path')
@@ -697,6 +741,15 @@ done
   die "Prefix directory ${PREFIX@Q} could not be found."
 
 check_python
+
+if [ "${#_ENTRYPOINTS_GENERATE[@]}" -ge '1' ]; then
+  check_arg_list_a_contains_all_b_list_items \
+    --expect-entrypoints --generate-entrypoints \
+    "${#_ENTRYPOINTS_EXPECTED[@]}" "${#_ENTRYPOINTS_GENERATE[@]}" \
+    "${_ENTRYPOINTS_EXPECTED[@]}" "${_ENTRYPOINTS_GENERATE[@]}"
+else
+  _ENTRYPOINTS_GENERATE=("${_ENTRYPOINTS_EXPECTED[@]}")
+fi
 
 if [ -n "$TARGET_DIR" ]; then
   if [ -n "$MODULES_PATH" ]; then
@@ -792,7 +845,7 @@ if [ -n "$TARGET_DIR" ]; then
   info 'Successfully extracted files from wheel.'
   hook_cmd_run 'post-extraction' "$_POST_EXTRACTION_CMD"
 
-  if [ -z "$_BUILD_ONLY" ] && [ "${#_ENTRYPOINTS_EXPECTED[@]}" -ge '1' ]; then
+  if [ -z "$_BUILD_ONLY" ] && [ "${#_ENTRYPOINTS_GENERATE[@]}" -ge '1' ]; then
     info 'Generating entrypoints from wheel...'
     wheel_entrypoints_generate
     info "Successfully generated entrypoints."
