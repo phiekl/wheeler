@@ -334,8 +334,11 @@ EOF
       [ "$line" == '[console_scripts]' ] || continue
       found='yes'
     else
-      [[ $line =~ $rgx ]] || continue
-      _ENTRYPOINTS["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
+      if [[ $line =~ ^\[ ]]; then
+        break
+      elif [[ $line =~ $rgx ]]; then
+        _ENTRYPOINTS["${BASH_REMATCH[1]}"]="${BASH_REMATCH[2]}"
+      fi
     fi
   done <<< "$out"
 
