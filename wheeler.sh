@@ -593,17 +593,17 @@ while [ -n "${1+set}" ]; do
         die "Argument ${1@Q} requires a non-empty comma-separated value."
       shift 2
       ;;
-    '--expect-modules')
-      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
-      csv_read '_MODULES_EXPECTED' "$2"
-      [ "${#_MODULES_EXPECTED[@]}" -ge '1' ] ||
-        die "Argument ${1@Q} requires a non-empty comma-separated value."
-      shift 2
-      ;;
     '--expect-files')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       csv_read '_FILES_EXPECTED' "$2"
       [ "${#_FILES_EXPECTED[@]}" -ge '1' ] ||
+        die "Argument ${1@Q} requires a non-empty comma-separated value."
+      shift 2
+      ;;
+    '--expect-modules')
+      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
+      csv_read '_MODULES_EXPECTED' "$2"
+      [ "${#_MODULES_EXPECTED[@]}" -ge '1' ] ||
         die "Argument ${1@Q} requires a non-empty comma-separated value."
       shift 2
       ;;
