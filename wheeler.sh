@@ -426,7 +426,7 @@ EOF
 
 wheel_verify_content()
 {
-  local data dist_info expected f module out unexpected
+  local data dist_info expected expected_list f found missing out unexpected
 
   f="$TMP_DIR/wheel_verify_content.py"
   mkdir -p -- "${f%/*}"
@@ -441,17 +441,21 @@ EOF
   out="$(run python3 "$f" "$WHEEL_FILE")"
   rm -- "$f"
 
+  expected_list=("${_MODULES_EXPECTED[@]}" "${_FILES_EXPECTED[@]}")
   declare -A expected=()
-  for f in "${_MODULES_EXPECTED[@]}" "${_FILES_EXPECTED[@]}"; do
+  for f in "${expected_list[@]}"; do
     expected["$f"]='set'
   done
   dist_info=()
+  declare -A found=()
   unexpected=()
   while read -r f; do
     if [[ $f =~ \.dist-info$ ]]; then
       dist_info+=("$f")
     elif [ -z "${expected["$f"]-}" ] && [ -z "${expected["${f%.py}"]-}" ]; then
       unexpected+=("$f")
+    else
+      found["$f"]='set'
     fi
   done <<< "$out"
 
@@ -461,10 +465,22 @@ EOF
     die "Multiple *.dist-info items found in wheel: ${dist_info[*]@Q}"
   fi
   if [ "${#unexpected[@]}" -ge '1' ]; then
-    die "Unexpected items found in wheel: ${unexpected[*]@Q}"
+    die "Unexpected items found in wheel: ${unexpected[*]@Q} (expected: \
+${expected_list[*]@Q})"
   fi
 
+  missing=()
+  for f in "${_MODULES_EXPECTED[@]}" "${_FILES_EXPECTED[@]}"; do
+    if [ -z "${found["$f"]-}" ] && [ -z "${found["$f.py"]-}" ]; then
+      missing+=("$f")
+    fi
+  done
+  [ "${#missing[@]}" == '0' ] ||
+    die "Missing expected item(s) in wheel: ${missing[*]@Q}"
+
   _WHEEL_DIST_INFO_DIRNAME="${dist_info[0]}"
+
+  info "All expected modules and files found in wheel: ${expected_list[*]@Q}"
 }
 
 set -eupo pipefail
@@ -679,9 +695,8 @@ hook_cmd_run 'post-build' "$_POST_BUILD_CMD"
   _MODULES_EXPECTED=("$WHEEL_NAME")
 
 if [ -z "$_BUILD_ONLY" ]; then
-  info "Verifying contents of wheel (expecting: ${_MODULES_EXPECTED[*]@Q})..."
+  info 'Verifying contents of wheel...'
   wheel_verify_content
-  info 'All expected modules found in wheel.'
 
   info "Verifying that the wheel's modules are not already installed..."
   _installed=()
