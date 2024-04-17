@@ -60,12 +60,18 @@ Default: <prefix>/bin
 --wheel-dir <path>
 Copy the wheel into this directory.
 
---expect-modules <module,moduleN,..>
+--expect-modules <module1,moduleN,..>
 Expect these comma-separated module names in the wheel, which will be imported
 one by one, during verification. Defaults to the name of the wheel.
 
+--extract-modules <module1,duleN,..>
+Extract only these modules (defaults to the ones expected).
+
 --expect-files <file1,fileN,..>
-Expect these extra non-module files in the wheel's top directory.
+Expect these extra non-module files/dirs in the wheel's top directory.
+
+--extract-files <file1,fileN,..>
+Extract only these files/dirs (defaults to the ones expected).
 
 --expect-entrypoints <entrypoint,entrypointN,..>
 Expect these entrypoints to be defined in the wheel.
@@ -473,12 +479,17 @@ wheel_extract()
   readarray -t data << 'EOF'
 import sys
 import zipfile
+files = set(sys.argv[3:])
 with zipfile.ZipFile(sys.argv[1], 'r') as zh:
-    zh.extractall(sys.argv[2])
+    for info in zh.infolist():
+        name = info.filename.split("/")[0]
+        if name in files or name.endswith(".dist-info"):
+            zh.extract(info, sys.argv[2])
 EOF
   printf '%s\n' "${data[@]}" > "$f"
 
-  run python3 "$f" "$WHEEL_FILE" "$MODULES_TARGET_DIR"
+  run python3 "$f" "$WHEEL_FILE" "$MODULES_TARGET_DIR" \
+    "${_FILES_EXTRACT[@]}" "${_MODULES_EXTRACT[@]}"
   rm -- "$f"
 }
 
@@ -533,6 +544,9 @@ EOF
     elif [ -z "${expected["$f"]-}" ] && [ -z "${expected["${f%.py}"]-}" ]; then
       unexpected+=("$f")
     else
+      if [[ $f =~ \.py$ ]]; then
+        _MODULES_EXTRACT+=("$f")
+      fi
       found["$f"]='set'
     fi
   done <<< "$out"
@@ -597,7 +611,9 @@ _GLOBALS=(
   '@_ENTRYPOINTS_EXPECTED'
   '@_ENTRYPOINTS_GENERATE'
   '@_FILES_EXPECTED'
+  '@_FILES_EXTRACT'
   '@_MODULES_EXPECTED'
+  '@_MODULES_EXTRACT'
   '=_ENTRYPOINTS'
 )
 for v in "${_GLOBALS[@]}"; do
@@ -641,6 +657,20 @@ while [ -n "${1+set}" ]; do
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       csv_read '_MODULES_EXPECTED' "$2"
       [ "${#_MODULES_EXPECTED[@]}" -ge '1' ] ||
+        die "Argument ${1@Q} requires a non-empty comma-separated value."
+      shift 2
+      ;;
+    '--extract-files')
+      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
+      csv_read '_FILES_EXTRACT' "$2"
+      [ "${#_FILES_EXTRACT[@]}" -ge '1' ] ||
+        die "Argument ${1@Q} requires a non-empty comma-separated value."
+      shift 2
+      ;;
+    '--extract-modules')
+      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
+      csv_read '_MODULES_EXTRACT' "$2"
+      [ "${#_MODULES_EXTRACT[@]}" -ge '1' ] ||
         die "Argument ${1@Q} requires a non-empty comma-separated value."
       shift 2
       ;;
@@ -749,6 +779,24 @@ if [ "${#_ENTRYPOINTS_GENERATE[@]}" -ge '1' ]; then
     "${_ENTRYPOINTS_EXPECTED[@]}" "${_ENTRYPOINTS_GENERATE[@]}"
 else
   _ENTRYPOINTS_GENERATE=("${_ENTRYPOINTS_EXPECTED[@]}")
+fi
+
+if [ "${#_FILES_EXTRACT[@]}" -ge '1' ]; then
+  check_arg_list_a_contains_all_b_list_items \
+    --expect-files --extract-files \
+    "${#_FILES_EXPECTED[@]}" "${#_FILES_EXTRACT[@]}" \
+    "${_FILES_EXPECTED[@]}" "${_FILES_EXTRACT[@]}"
+else
+  _FILES_EXTRACT=("${_FILES_EXPECTED[@]}")
+fi
+
+if [ "${#_MODULES_EXTRACT[@]}" -ge '1' ]; then
+  check_arg_list_a_contains_all_b_list_items \
+    --expect-modules --extract-modules \
+    "${#_MODULES_EXPECTED[@]}" "${#_MODULES_EXTRACT[@]}" \
+    "${_MODULES_EXPECTED[@]}" "${_MODULES_EXTRACT[@]}"
+else
+  _MODULES_EXTRACT=("${_MODULES_EXPECTED[@]}")
 fi
 
 if [ -n "$TARGET_DIR" ]; then
