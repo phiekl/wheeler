@@ -12,7 +12,7 @@ syntax()
   env_lines=('')
   n='0'
   for v in "${_GLOBALS[@]}"; do
-    if [[ $v =~ ^_ ]]; then
+    if [[ $v =~ ^[_@=] ]]; then
       continue
     fi
     if [ $((${#env_lines[n]} + 2 + ${#v})) -gt '79' ]; then
