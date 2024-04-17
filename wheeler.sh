@@ -68,7 +68,7 @@ one by one, during verification. Defaults to the name of the wheel.
 Expect these extra non-module files in the wheel's top directory.
 
 --expect-entrypoints <entrypoint,entrypointN,..>
-Expect these entrypoints to be defined in the wheel and generate only these.
+Expect these entrypoints to be defined in the wheel.
 
 --build-only
 Only build and optionally extract the wheel, do not verify or test the wheel.
@@ -357,22 +357,52 @@ entrypoints data, but no (valid) entrypoints."
 
 wheel_entrypoints_parse()
 {
-  local name missing
+  local entrypoints expected found missing unexpected
 
   wheel_entrypoints_file_parse
 
+  entrypoints=("${!_ENTRYPOINTS[@]}") # as ${!_ENTRYPOINTS[*]@Q} is broken
+
   if [ "${#_ENTRYPOINTS_EXPECTED[@]}" == '0' ]; then
-    _ENTRYPOINTS_EXPECTED=("${!_ENTRYPOINTS[@]}")
-  else
-    missing=()
-    for name in "${_ENTRYPOINTS_EXPECTED[@]}"; do
-      [ -n "${_ENTRYPOINTS["$name"]-}" ] || missing+=("$name")
-    done
-    if [ "${#missing[@]}" -ge '1' ]; then
-      _ENTRYPOINTS_PARSE_ERROR="Missing expected entrypoint(s): ${missing[*]@Q}"
+    if [ "${#entrypoints[@]}" == '0' ]; then
+      info 'No entrypoints found in wheel and none were expected either.'
       return 0
+    else
+      die "No entrypoints expected in wheel, but found: ${entrypoints[*]@Q}"
     fi
   fi
+
+  if [ -n "${_ENTRYPOINTS_PARSE_ERROR}" ]; then
+    die "$_ENTRYPOINTS_PARSE_ERROR"
+  fi
+
+  declare -A expected=()
+  for f in "${_ENTRYPOINTS_EXPECTED[@]}"; do
+    expected["$f"]='set'
+  done
+  declare -A found=()
+  unexpected=()
+  for f in "${entrypoints[@]}"; do
+    if [ -z "${expected["$f"]-}" ]; then
+      unexpected+=("$f")
+    else
+      found["$f"]='set'
+    fi
+  done
+
+  if [ "${#unexpected[@]}" -ge '1' ]; then
+    die "Unexpected entrypoint(s) found in wheel: ${unexpected[*]@Q} \
+(expected: ${_ENTRYPOINTS_EXPECTED[*]@Q})"
+  fi
+
+  missing=()
+  for f in "${_ENTRYPOINTS_EXPECTED[@]}"; do
+    [ -n "${found["$f"]-}" ] || missing+=("$f")
+  done
+  [ "${#missing[@]}" == '0' ] ||
+    die "Missing expected entrypoint(s) in wheel: ${missing[*]@Q}"
+
+  info "All expected entrypoints found in wheel: ${_ENTRYPOINTS_EXPECTED[*]@Q}"
 }
 
 wheel_entrypoints_generate()
@@ -710,6 +740,9 @@ if [ -z "$_BUILD_ONLY" ]; then
   info 'Verifying contents of wheel...'
   wheel_verify_content
 
+  info 'Parsing entrypoints in wheel...'
+  wheel_entrypoints_parse
+
   info "Verifying that the wheel's modules are not already installed..."
   _installed=()
   for _module in "${_MODULES_EXPECTED[@]}"; do
@@ -759,14 +792,7 @@ if [ -n "$TARGET_DIR" ]; then
   info 'Successfully unpacked wheel.'
   hook_cmd_run 'post-unpack' "$_POST_UNPACK_CMD"
 
-  info 'Parsing entrypoints from wheel...'
-  wheel_entrypoints_parse
-  if [ "${#_ENTRYPOINTS_EXPECTED[@]}" == '0' ]; then
-    info "No entrypoints found in wheel."
-  elif [ -n "$_ENTRYPOINTS_PARSE_ERROR" ]; then
-    die "$_ENTRYPOINTS_PARSE_ERROR"
-  else
-    info "Successfully parsed entrypoints."
+  if [ -z "$_BUILD_ONLY" ] && [ "${#_ENTRYPOINTS_EXPECTED[@]}" -ge '1' ]; then
     info 'Generating entrypoints from wheel...'
     wheel_entrypoints_generate
     info "Successfully generated entrypoints."
