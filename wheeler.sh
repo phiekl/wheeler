@@ -53,6 +53,10 @@ Triggers extraction of the wheel, where the specified directory is used in a
 Extract the modules into this path, relative to the target dir.
 Default: <prefix>/lib/python<version>/site-packages
 
+--files-path <relative path>
+Extract any non-module files/dirs into this path, relative to the target dir.
+Default: <modules path>
+
 --entrypoints-path <path>
 Generate entrypoints into this path, relative to the target dir.
 Default: <prefix>/bin
@@ -148,6 +152,7 @@ exit_trap()
 
   paths=(
     "${ENTRYPOINTS_TARGET_DIR-}"
+    "${FILES_TARGET_DIR-}"
     "${MODULES_TARGET_DIR-}"
     "${WHEEL_DIR-}"
   )
@@ -498,11 +503,33 @@ EOF
   done
 }
 
-wheel_extract()
+wheel_extract_files()
 {
   local data f
 
-  f="$TMP_DIR/wheel_extract.py"
+  f="$TMP_DIR/wheel_extract_files.py"
+  mkdir -p -- "${f%/*}"
+  readarray -t data << 'EOF'
+import sys
+import zipfile
+files = set(sys.argv[3:])
+with zipfile.ZipFile(sys.argv[1], 'r') as zh:
+    for info in zh.infolist():
+        name = info.filename.split("/")[0]
+        if name in files:
+            zh.extract(info, sys.argv[2])
+EOF
+  printf '%s\n' "${data[@]}" > "$f"
+
+  run python3 "$f" "$WHEEL_FILE" "$FILES_TARGET_DIR" "${_FILES_EXTRACT[@]}"
+  rm -- "$f"
+}
+
+wheel_extract_modules()
+{
+  local data f
+
+  f="$TMP_DIR/wheel_extract_modules.py"
   mkdir -p -- "${f%/*}"
   readarray -t data << 'EOF'
 import sys
@@ -516,8 +543,7 @@ with zipfile.ZipFile(sys.argv[1], 'r') as zh:
 EOF
   printf '%s\n' "${data[@]}" > "$f"
 
-  run python3 "$f" "$WHEEL_FILE" "$MODULES_TARGET_DIR" \
-    "${_FILES_EXTRACT[@]}" "${_MODULES_EXTRACT[@]}"
+  run python3 "$f" "$WHEEL_FILE" "$MODULES_TARGET_DIR" "${_MODULES_EXTRACT[@]}"
   rm -- "$f"
 }
 
@@ -612,6 +638,8 @@ _GLOBALS=(
   'ENTRYPOINTS_PATH'
   'ENTRYPOINTS_SHEBANG'
   'ENTRYPOINTS_TARGET_DIR'
+  'FILES_PATH'
+  'FILES_TARGET_DIR'
   'MODULES_PATH'
   'MODULES_TARGET_DIR'
   'PREFIX'
@@ -721,6 +749,11 @@ while [ -n "${1+set}" ]; do
     '--entrypoints-path')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       ENTRYPOINTS_PATH="$2"
+      shift 2
+      ;;
+    '--files-path')
+      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
+      FILES_PATH="$2"
       shift 2
       ;;
     '--generate-entrypoints')
@@ -884,6 +917,12 @@ if [ -n "$TARGET_DIR" ]; then
     MODULES_PATH="${PREFIX#/}/lib/python$PYTHON_VERSION/site-packages"
   fi
 
+  if [ -n "$FILES_PATH" ]; then
+    check_arg_valid_path "$FILES_PATH" 'Files'
+  else
+    FILES_PATH="$MODULES_PATH"
+  fi
+
   if [ -n "$ENTRYPOINTS_PATH" ]; then
     check_arg_valid_path "$ENTRYPOINTS_PATH" 'Entrypoints'
   else
@@ -891,8 +930,10 @@ if [ -n "$TARGET_DIR" ]; then
   fi
 
   ENTRYPOINTS_TARGET_DIR="$TARGET_DIR/$ENTRYPOINTS_PATH"
+  FILES_TARGET_DIR="$TARGET_DIR/$FILES_PATH"
   MODULES_TARGET_DIR="$TARGET_DIR/$MODULES_PATH"
-  run mkdir -p -- "$ENTRYPOINTS_TARGET_DIR" "$MODULES_TARGET_DIR"
+  run mkdir -p -- \
+    "$ENTRYPOINTS_TARGET_DIR" "$FILES_TARGET_DIR" "$MODULES_TARGET_DIR"
 fi
 
 if [ -n "$WHEEL_DIR" ]; then
@@ -968,9 +1009,20 @@ ${_installed[*]@Q}"
 fi
 
 if [ -n "$TARGET_DIR" ]; then
-  info "Extracting files from wheel into ${MODULES_TARGET_DIR@Q}..."
-  wheel_extract
-  info 'Successfully extracted files from wheel.'
+  if [ "${#_MODULES_EXTRACT[@]}" -ge '1' ]; then
+    info "Extracting modules from wheel into ${MODULES_TARGET_DIR@Q}..."
+    wheel_extract_modules
+    info 'Successfully extracted modules from wheel.'
+  else
+    info 'No modules to extract.'
+  fi
+  if [ "${#_FILES_EXTRACT[@]}" -ge '1' ]; then
+    info "Extracting files from wheel into ${FILES_TARGET_DIR@Q}..."
+    wheel_extract_files
+    info 'Successfully extracted files from wheel.'
+  else
+    info 'No files to extract.'
+  fi
   hook_cmd_run 'post-extraction' "$_POST_EXTRACTION_CMD"
 
   if [ -z "$_BUILD_ONLY" ] && [ "${#_ENTRYPOINTS_GENERATE[@]}" -ge '1' ]; then
