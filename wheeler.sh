@@ -897,19 +897,6 @@ else
   _FILES_EXTRACT=("${_FILES_EXPECTED[@]}")
 fi
 
-if [ "${#_MODULES_EXTRACT[@]}" -ge '1' ]; then
-  if [ "${_MODULES_EXTRACT[0]}" == '/NOOP' ]; then
-    _MODULES_EXTRACT=()
-  else
-    check_arg_list_a_contains_all_b_list_items \
-      --expect-modules --extract-modules \
-      "${#_MODULES_EXPECTED[@]}" "${#_MODULES_EXTRACT[@]}" \
-      "${_MODULES_EXPECTED[@]}" "${_MODULES_EXTRACT[@]}"
-  fi
-else
-  _MODULES_EXTRACT=("${_MODULES_EXPECTED[@]}")
-fi
-
 if [ -n "$TARGET_DIR" ]; then
   if [ -n "$MODULES_PATH" ]; then
     check_arg_valid_path "$MODULES_PATH" 'Modules'
@@ -955,6 +942,19 @@ hook_cmd_run 'post-build' "$_POST_BUILD_CMD"
 
 [ "${#_MODULES_EXPECTED[@]}" -ge '1' ] ||
   _MODULES_EXPECTED=("$WHEEL_NAME")
+
+if [ "${#_MODULES_EXTRACT[@]}" -ge '1' ]; then
+  if [ "${_MODULES_EXTRACT[0]}" == '/NOOP' ]; then
+    _MODULES_EXTRACT=()
+  else
+    check_arg_list_a_contains_all_b_list_items \
+      --expect-modules --extract-modules \
+      "${#_MODULES_EXPECTED[@]}" "${#_MODULES_EXTRACT[@]}" \
+      "${_MODULES_EXPECTED[@]}" "${_MODULES_EXTRACT[@]}"
+  fi
+else
+  _MODULES_EXTRACT=("${_MODULES_EXPECTED[@]}")
+fi
 
 if [ -z "$_BUILD_ONLY" ]; then
   info 'Verifying contents of wheel...'
