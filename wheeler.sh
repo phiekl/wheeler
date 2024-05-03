@@ -79,6 +79,10 @@ Expect these entrypoints to be defined in the wheel.
 --generate-entrypoints <entrypoint,entrypointN,..>
 Generate only these entrypoints (defaults to the ones expected).
 
+--entrypoints-shebang <absolute path with optional arguments>
+Use this shebang in the generated entrypoints.
+Default: <prefix>/bin/python3
+
 --build-only
 Only build and optionally extract the wheel, do not verify or test the wheel.
 
@@ -469,14 +473,18 @@ wheel_entrypoints_parse()
 
 wheel_entrypoints_generate()
 {
-  local data f function module name
+  local data f function module name shebang
+
+  shebang="$ENTRYPOINTS_SHEBANG"
+  [ -n "$shebang" ] ||
+    shebang="$PREFIX/bin/python3"
 
   for name in "${_ENTRYPOINTS_GENERATE[@]}"; do
     module="${_ENTRYPOINTS["$name"]%%:*}"
     function="${_ENTRYPOINTS["$name"]#*:}"
 
     readarray -t data << EOF
-#!$PREFIX/bin/python3
+#!$shebang
 import sys
 from $module import $function
 if __name__ == '__main__':
@@ -602,6 +610,7 @@ shopt -s inherit_errexit
 unset _GLOBALS
 _GLOBALS=(
   'ENTRYPOINTS_PATH'
+  'ENTRYPOINTS_SHEBANG'
   'MODULES_PATH'
   'MODULES_TARGET_DIR'
   'PREFIX'
@@ -661,6 +670,12 @@ while [ -n "${1+set}" ]; do
     '--build-only')
       _BUILD_ONLY='yes'
       shift
+      ;;
+    '--entrypoints-shebang')
+      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
+      [[ $2 =~ ^/[^/\ ] ]] || die "Unexpected value ${2@Q} for argument ${1@Q}."
+      ENTRYPOINTS_SHEBANG="$2"
+      shift 2
       ;;
     '--expect-entrypoints')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
