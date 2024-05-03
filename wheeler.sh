@@ -64,7 +64,7 @@ Copy the wheel into this directory.
 Expect these comma-separated module names in the wheel, which will be imported
 one by one, during verification. Defaults to the name of the wheel.
 
---extract-modules <module1,duleN,..>
+--extract-modules <module1,moduleN,..>
 Extract only these modules (defaults to the ones expected).
 
 --expect-files <file1,fileN,..>
