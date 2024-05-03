@@ -214,18 +214,18 @@ check_arg_filename_items()
 
 check_arg_valid_path()
 {
-  local description path rgx
+  local arg path rgx
 
-  path="$1"
-  description="$2"
+  arg="$1"
+  path="$2"
 
   rgx='^[^/]+(/[^/]+)*'
   [[ $path =~ $rgx ]] ||
-    die "$description path ${path@Q} not matching regex ${rgx@Q}."
+    die "Argument ${arg@Q} value ${path@Q} not matching regex ${rgx@Q}."
 
   rgx='(^|/)\.\.?(/|$)'
   if [[ $path =~ $rgx ]]; then
-    die "$description path ${path@Q} contains relative path component(s)."
+    die "Argument ${arg@Q} value ${path@Q} contains relative path component(s)."
   fi
 }
 
@@ -728,7 +728,7 @@ while [ -n "${1+set}" ]; do
       if [ -n "${2-}" ]; then
         csv_read '_FILES_EXTRACT' "$2"
         check_arg_filename_items "$1" "${_FILES_EXTRACT[@]}"
-      elif [ -z "${2-unset}" ]; then
+      elif [ -n "${2+set}" ]; then
         _FILES_EXTRACT=('/NOOP')
       else
         die "Argument ${1@Q} requires a value."
@@ -739,7 +739,7 @@ while [ -n "${1+set}" ]; do
       if [ -n "${2-}" ]; then
         csv_read '_MODULES_EXTRACT' "$2"
         check_arg_filename_items "$1" "${_MODULES_EXTRACT[@]}"
-      elif [ -z "${2-unset}" ]; then
+      elif [ -n "${2+set}" ]; then
         _MODULES_EXTRACT=('/NOOP')
       else
         die "Argument ${1@Q} requires a value."
@@ -747,20 +747,34 @@ while [ -n "${1+set}" ]; do
       shift 2
       ;;
     '--entrypoints-path')
-      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
+      [ -n "${2+set}" ] || die "Argument ${1@Q} requires a value."
       ENTRYPOINTS_PATH="$2"
+      if [ -n "${2-}" ]; then
+        check_arg_valid_path "$1" "$2"
+        ENTRYPOINTS_PATH="$2"
+      elif [ -n "${2+set}" ]; then
+        ENTRYPOINTS_PATH='/NOOP'
+      else
+        die "Argument ${1@Q} requires a value."
+      fi
       shift 2
       ;;
     '--files-path')
-      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
-      FILES_PATH="$2"
+      if [ -n "${2-}" ]; then
+        check_arg_valid_path "$1" "$2"
+        FILES_PATH="$2"
+      elif [ -n "${2+set}" ]; then
+        FILES_PATH='/NOOP'
+      else
+        die "Argument ${1@Q} requires a value."
+      fi
       shift 2
       ;;
     '--generate-entrypoints')
       if [ -n "${2-}" ]; then
         csv_read '_ENTRYPOINTS_GENERATE' "$2"
         check_arg_filename_items "$1" "${_ENTRYPOINTS_GENERATE[@]}"
-      elif [ -z "${2-unset}" ]; then
+      elif [ -n "${2+set}" ]; then
         _ENTRYPOINTS_GENERATE=('/NOOP')
       else
         die "Argument ${1@Q} requires a value."
@@ -768,8 +782,14 @@ while [ -n "${1+set}" ]; do
       shift 2
       ;;
     '--modules-path')
-      [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
-      MODULES_PATH="$2"
+      if [ -n "${2-}" ]; then
+        check_arg_valid_path "$1" "$2"
+        MODULES_PATH="$2"
+      elif [ -n "${2+set}" ]; then
+        MODULES_PATH='/NOOP'
+      else
+        die "Argument ${1@Q} requires a value."
+      fi
       shift 2
       ;;
     '--no-verify-import')
@@ -898,22 +918,22 @@ else
 fi
 
 if [ -n "$TARGET_DIR" ]; then
-  if [ -n "$MODULES_PATH" ]; then
-    check_arg_valid_path "$MODULES_PATH" 'Modules'
-  else
+  if [ -z "$MODULES_PATH" ]; then
     MODULES_PATH="${PREFIX#/}/lib/python$PYTHON_VERSION/site-packages"
+  elif [ "$MODULES_PATH" == '/NOOP' ]; then
+    MODULES_PATH=''
   fi
 
-  if [ -n "$FILES_PATH" ]; then
-    check_arg_valid_path "$FILES_PATH" 'Files'
-  else
+  if [ -z "$FILES_PATH" ]; then
     FILES_PATH="$MODULES_PATH"
+  elif [ "$FILES_PATH" == '/NOOP' ]; then
+    FILES_PATH=''
   fi
 
-  if [ -n "$ENTRYPOINTS_PATH" ]; then
-    check_arg_valid_path "$ENTRYPOINTS_PATH" 'Entrypoints'
-  else
+  if [ -z "$ENTRYPOINTS_PATH" ]; then
     ENTRYPOINTS_PATH="${PREFIX#/}/bin"
+  elif [ "$ENTRYPOINTS_PATH" == '/NOOP' ]; then
+    ENTRYPOINTS_PATH=''
   fi
 
   ENTRYPOINTS_TARGET_DIR="$TARGET_DIR/$ENTRYPOINTS_PATH"
