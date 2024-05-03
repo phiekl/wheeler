@@ -331,7 +331,7 @@ hook_cmd_run()
       [[ $v =~ ^[_@=] ]] || export "$v"
     done
     export STAGE="$1"
-    run bash -c "$2"
+    run bash -euc "$2"
   )
   info "Successfully executed hook command for stage ${1@Q}."
 }
