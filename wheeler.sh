@@ -82,6 +82,9 @@ Generate only these entrypoints (defaults to the ones expected).
 --build-only
 Only build and optionally extract the wheel, do not verify or test the wheel.
 
+--no-verify-import
+Verify contents of the wheel, but do not try to install and import it.
+
 --pytest
 Execute pytest after the wheel has been built and installed.
 
@@ -624,6 +627,7 @@ _GLOBALS=(
   '_PRE_BUILD_CMD'
   '_PRE_INSTALL_CMD'
   '_PRE_UNINSTALL_CMD'
+  '_VERIFY_IMPORT'
   '_WHEEL_DIST_INFO_DIRNAME'
   '@_ENTRYPOINTS_EXPECTED'
   '@_ENTRYPOINTS_GENERATE'
@@ -646,6 +650,8 @@ for v in "${_GLOBALS[@]}"; do
   fi
 done
 unset v
+
+_VERIFY_IMPORT='yes'
 
 while [ -n "${1+set}" ]; do
   case "$1" in
@@ -716,6 +722,10 @@ while [ -n "${1+set}" ]; do
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
       MODULES_PATH="$2"
       shift 2
+      ;;
+    '--no-verify-import')
+      _VERIFY_IMPORT=''
+      shift
       ;;
     '--post-build-cmd')
       [ -n "${2-}" ] || die "Argument ${1@Q} requires a value."
@@ -801,6 +811,13 @@ if [ -n "$_BUILD_ONLY" ]; then
     die '--build-only and --expect-entrypoints are not compatible.'
   [ "${#_ENTRYPOINTS_GENERATE[@]}" == '0' ] ||
     die '--build-only and --generate-entrypoints are not compatible.'
+fi
+
+if [ -z "$_VERIFY_IMPORT" ]; then
+  [ -z "$_MODE_PYTEST" ] ||
+    die '--no-verify-import and --pytest are not compatible.'
+  [ -z "$_MODE_UNITTEST" ] ||
+    die '--no-verify-import and --unittest are not compatible.'
 fi
 
 check_python
@@ -889,47 +906,49 @@ if [ -z "$_BUILD_ONLY" ]; then
   info 'Parsing entrypoints in wheel...'
   wheel_entrypoints_parse
 
-  info "Verifying that the wheel's modules are not already installed..."
-  _installed=()
-  for _module in "${_MODULES_EXPECTED[@]}"; do
-    check_module_import "$_module"
-    [ -n "$_MODULE_IMPORT_ERROR" ] || _installed+=("$_module")
-  done
-  [ "${#_installed[@]}" == '0' ] ||
-    die "Found already installed modules in this python environment: \
+  if [ -n "$_VERIFY_IMPORT" ]; then
+    info "Verifying that the wheel's modules are not already installed..."
+    _installed=()
+    for _module in "${_MODULES_EXPECTED[@]}"; do
+      check_module_import "$_module"
+      [ -n "$_MODULE_IMPORT_ERROR" ] || _installed+=("$_module")
+    done
+    [ "${#_installed[@]}" == '0' ] ||
+      die "Found already installed modules in this python environment: \
 ${_installed[*]@Q}"
 
-  hook_cmd_run 'pre-install' "$_POST_INSTALL_CMD"
-  info 'Installing wheel...'
-  wheel_install
-  info 'Successfully installed wheel.'
-  hook_cmd_run 'post-install' "$_POST_INSTALL_CMD"
+    hook_cmd_run 'pre-install' "$_POST_INSTALL_CMD"
+    info 'Installing wheel...'
+    wheel_install
+    info 'Successfully installed wheel.'
+    hook_cmd_run 'post-install' "$_POST_INSTALL_CMD"
 
-  info "Verifying that the installed wheel's modules can be imported..."
-  for _module in "${_MODULES_EXPECTED[@]}"; do
-    check_module_import "$_module"
-    [ -z "$_MODULE_IMPORT_ERROR" ] ||
-      die "Failed to import module ${_module@Q}: $_MODULE_IMPORT_ERROR"
-  done
-  info "Successfully imported module(s): ${_MODULES_EXPECTED[*]@Q}"
+    info "Verifying that the installed wheel's modules can be imported..."
+    for _module in "${_MODULES_EXPECTED[@]}"; do
+      check_module_import "$_module"
+      [ -z "$_MODULE_IMPORT_ERROR" ] ||
+        die "Failed to import module ${_module@Q}: $_MODULE_IMPORT_ERROR"
+    done
+    info "Successfully imported module(s): ${_MODULES_EXPECTED[*]@Q}"
 
-  if [ -n "$_MODE_PYTEST" ]; then
-    info 'Running tests using pytest...'
-    run python3 -m pytest -v
-    info 'Successfully run tests using pytest.'
+    if [ -n "$_MODE_PYTEST" ]; then
+      info 'Running tests using pytest...'
+      run python3 -m pytest -v
+      info 'Successfully run tests using pytest.'
+    fi
+
+    if [ -n "$_MODE_UNITTEST" ]; then
+      info 'Running tests using unittest...'
+      run python3 -m unittest discover tests -v
+      info 'Successfully run tests using unittest.'
+    fi
+
+    hook_cmd_run 'pre-uninstall' "$_POST_UNINSTALL_CMD"
+    info 'Uninstalling wheel again...'
+    wheel_uninstall
+    info 'Successfully uninstalled wheel.'
+    hook_cmd_run 'post-uninstall' "$_POST_UNINSTALL_CMD"
   fi
-
-  if [ -n "$_MODE_UNITTEST" ]; then
-    info 'Running tests using unittest...'
-    run python3 -m unittest discover tests -v
-    info 'Successfully run tests using unittest.'
-  fi
-
-  hook_cmd_run 'pre-uninstall' "$_POST_UNINSTALL_CMD"
-  info 'Uninstalling wheel again...'
-  wheel_uninstall
-  info 'Successfully uninstalled wheel.'
-  hook_cmd_run 'post-uninstall' "$_POST_UNINSTALL_CMD"
 fi
 
 if [ -n "$TARGET_DIR" ]; then
