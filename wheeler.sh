@@ -796,6 +796,13 @@ done
 [ -d "$PREFIX" ] ||
   die "Prefix directory ${PREFIX@Q} could not be found."
 
+if [ -n "$_BUILD_ONLY" ]; then
+  [ "${#_ENTRYPOINTS_EXPECTED[@]}" == '0' ] ||
+    die '--build-only and --expect-entrypoints are not compatible.'
+  [ "${#_ENTRYPOINTS_GENERATE[@]}" == '0' ] ||
+    die '--build-only and --generate-entrypoints are not compatible.'
+fi
+
 check_python
 
 if [ "${#_ENTRYPOINTS_GENERATE[@]}" -ge '1' ]; then
