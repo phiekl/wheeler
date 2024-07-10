@@ -363,7 +363,7 @@ wheel_build()
   f="${matches[0]}"
   fn="${f##*/}"
 
-  rgx='^([0-9a-z]([0-9a-z_]*[0-9a-z])?)-'
+  rgx='^([0-9A-Za-z]([0-9A-Za-z_]*[0-9A-Za-z])?)-'
   [[ $fn =~ $rgx ]] ||
     die "Unexpected wheel filename ${fn@Q}, not matching regex ${rgx@Q}."
 
